@@ -16,26 +16,17 @@ fn main() {
         .set_logical_size(640, 480, SDL_RendererLogicalPresentation::LETTERBOX)
         .unwrap();
 
-    let event_sys = sdl.event().unwrap();
     let mut event_pump = sdl.event_pump().unwrap();
 
     'main_loop: loop {
-        'event_loop: loop {
-            let Some(event) = event_pump.poll_event() else {
-                break 'event_loop;
-            };
+        for event in event_pump.poll_iter() {
             match event {
-                sdl3::event::Event::Quit { .. } => {
-                    break 'main_loop;
-                }
-                sdl3::event::Event::KeyDown {
-                    timestamp, keycode, ..
+                sdl3::event::Event::Quit { .. }
+                | sdl3::event::Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
                 } => {
-                    if keycode == Some(Keycode::Escape) {
-                        event_sys
-                            .push_event(sdl3::event::Event::Quit { timestamp })
-                            .unwrap();
-                    }
+                    break 'main_loop;
                 }
                 _ => {}
             }
