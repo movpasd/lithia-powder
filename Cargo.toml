@@ -6,4 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = "1.25.2"
 sdl3 = { version = "0.18.4", features = ["build-from-source-static"] }
+shaderc = "0.10.1"
+
+[dev-dependencies]
+clippy = "0.0.302"
