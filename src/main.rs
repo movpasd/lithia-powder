@@ -3,8 +3,9 @@ use sdl3::{
     gpu::{
         BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
         CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
-        GraphicsPipelineTargetInfo, RasterizerState, Shader, ShaderFormat, ShaderStage,
-        TransferBufferLocation, VertexAttribute, VertexBufferDescription, VertexInputState,
+        GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
+        ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
+        VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -18,57 +19,88 @@ fn main() {
     let window = video_sys
         .window("lithia-powder", 640, 480)
         .position_centered()
+        .resizable()
         .build()
         .unwrap();
 
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
-    const VERTEX_F32_SIZE: usize = 2 + 3;
-    const VERTEX_SIZE: usize = size_of::<f32>() * VERTEX_F32_SIZE;
-    const VERTEX_COUNT: usize = 3;
+    const VERTEX_F32_SIZE: u32 = 2 + 3;
+    const VERTEX_SIZE: u32 = size_of::<f32>() as u32 * VERTEX_F32_SIZE;
+    const VERTEX_COUNT: u32 = 4;
+    #[rustfmt::skip]
+    let vertex_data: [f32; (VERTEX_F32_SIZE * VERTEX_COUNT) as usize] = [
+    //     x     y    r    g    b
+        -0.5, -0.5, 1.00, 0.00, 0.00,
+         0.5, -0.5, 0.25, 0.75, 0.00,
+         0.5,  0.5, 0.00, 0.50, 0.50,
+        -0.5,  0.5, 0.25, 0.00, 0.75,
+    ];
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size((VERTEX_SIZE * VERTEX_COUNT) as u32)
+        .with_size(VERTEX_SIZE * VERTEX_COUNT)
         .build()
         .unwrap();
 
-    // upload data to vertex buffer
+    const INDEX_SIZE: u32 = size_of::<u32>() as u32;
+    const INDEX_COUNT: u32 = 6;
+    #[rustfmt::skip]
+    let index_data: [u32; INDEX_COUNT as usize] = [
+        0, 1, 2,
+        2, 3, 0,
+    ];
+    let index_buffer = device
+        .create_buffer()
+        .with_usage(BufferUsageFlags::INDEX)
+        .with_size(INDEX_SIZE * INDEX_COUNT)
+        .build()
+        .unwrap();
+
+    // upload data to geometry buffers
     {
-        #[rustfmt::skip]
-        let vertex_data: [f32; VERTEX_F32_SIZE * VERTEX_COUNT] = [
-        //   x     y    r    g    b
-             0.0,  0.5, 1.0, 0.0, 0.0,
-             -0.5, -0.5, 0.0, 1.0, 0.0,
-             0.5, -0.5, 0.0, 0.0, 1.0,
-        ];
-        let transfer_buffer = device
+        let vertex_transfer_buf = device
             .create_transfer_buffer()
             .with_size(vertex_buffer.len())
             .build()
             .unwrap();
-        transfer_buffer
+        vertex_transfer_buf
             .map(&device, false)
             .mem_mut()
             .copy_from_slice(bytemuck::bytes_of(&vertex_data));
 
-        let vertex_data_upload = device.acquire_command_buffer().unwrap();
+        let index_transfer_buf = device
+            .create_transfer_buffer()
+            .with_size(index_buffer.len())
+            .build()
+            .unwrap();
+        index_transfer_buf
+            .map(&device, false)
+            .mem_mut()
+            .copy_from_slice(bytemuck::bytes_of(&index_data));
+
+        let data_upload = device.acquire_command_buffer().unwrap();
         {
-            let copy_pass = device.begin_copy_pass(&vertex_data_upload).unwrap();
+            let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
             copy_pass.upload_to_gpu_buffer(
-                TransferBufferLocation::new().with_transfer_buffer(&transfer_buffer),
+                TransferBufferLocation::new().with_transfer_buffer(&vertex_transfer_buf),
                 BufferRegion::new()
                     .with_buffer(&vertex_buffer)
                     .with_size(vertex_buffer.len()),
                 false,
             );
+            copy_pass.upload_to_gpu_buffer(
+                TransferBufferLocation::new().with_transfer_buffer(&index_transfer_buf),
+                BufferRegion::new()
+                    .with_buffer(&index_buffer)
+                    .with_size(index_buffer.len()),
+                false,
+            );
             device.end_copy_pass(copy_pass);
         }
-        let vertex_data_upload_fence = vertex_data_upload
-            .submit_and_acquire_fence(&device)
-            .unwrap();
-        while !vertex_data_upload_fence.query(&device) {}
+        let data_upload_fence = data_upload.submit_and_acquire_fence(&device).unwrap();
+        while !data_upload_fence.query(&device) {}
 
         // for testing
         println!(
@@ -140,7 +172,7 @@ fn main() {
                 VertexInputState::new()
                     .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
                         .with_slot(0)
-                        .with_pitch(VERTEX_SIZE as u32)
+                        .with_pitch(VERTEX_SIZE)
                         .with_input_rate(VertexInputRate::Vertex)])
                     .with_vertex_attributes(&[
                         VertexAttribute::new()
@@ -199,18 +231,25 @@ fn main() {
         }
         {
             let mut cbuf = device.acquire_command_buffer().unwrap();
+
             let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
             let color_target_info = ColorTargetInfo::default()
                 .with_texture(&screen_texture)
                 .with_load_op(SDL_GPULoadOp::CLEAR)
                 .with_clear_color(Color::RGB(127, 127, 127));
+
             let render_pass = device
                 .begin_render_pass(&cbuf, &[color_target_info], None)
                 .unwrap();
             render_pass.bind_graphics_pipeline(&pipeline);
             render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&vertex_buffer)]);
-            render_pass.draw_primitives(3, 1, 0, 0);
+            render_pass.bind_index_buffer(
+                &BufferBinding::new().with_buffer(&index_buffer),
+                IndexElementSize::_32BIT,
+            );
+            render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
             device.end_render_pass(render_pass);
+
             let fence = cbuf.submit_and_acquire_fence(&device).unwrap();
             while !fence.query(&device) {}
         }
