@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 
 use sdl3::{
     self,
-    gpu::{BufferRegion, BufferUsageFlags, ShaderFormat, TransferBufferLocation},
+    gpu::{BufferRegion, BufferUsageFlags, GraphicsPipeline, ShaderFormat, TransferBufferLocation},
     keyboard::Keycode,
     pixels::Color,
     sys::render::SDL_RendererLogicalPresentation,
@@ -22,11 +22,10 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     const VERTEX_FLOAT_COUNT: usize = (2 + 3) * 3;
-    const VERTEX_BUF_SIZE: u32 = (size_of::<f32>() * VERTEX_FLOAT_COUNT) as u32;
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(VERTEX_BUF_SIZE)
+        .with_size((size_of::<f32>() * VERTEX_FLOAT_COUNT) as u32)
         .build()
         .unwrap();
 
@@ -41,7 +40,7 @@ fn main() {
         ];
         let transfer_buffer = device
             .create_transfer_buffer()
-            .with_size(VERTEX_BUF_SIZE)
+            .with_size(vertex_buffer.len())
             .build()
             .unwrap();
         transfer_buffer
@@ -56,7 +55,7 @@ fn main() {
                 TransferBufferLocation::new().with_transfer_buffer(&transfer_buffer),
                 BufferRegion::new()
                     .with_buffer(&vertex_buffer)
-                    .with_size(VERTEX_BUF_SIZE),
+                    .with_size(vertex_buffer.len()),
                 false,
             );
             device.end_copy_pass(copy_pass);
@@ -73,7 +72,55 @@ fn main() {
         );
     }
 
-    let mut canvas = window.into_canvas();
+    // load and render shaders
+    {
+        use shaderc::ShaderKind;
+
+        let compiler = shaderc::Compiler::new().unwrap();
+
+        let vertex_source = include_str!("shaders/vertex.glsl");
+        let vertex_ir = compiler
+            .compile_into_spirv(
+                vertex_source,
+                ShaderKind::Vertex,
+                "shaders/vertex.glsl",
+                "main",
+                None,
+            )
+            .unwrap()
+            .as_binary_u8();
+
+        let fragment_source = include_str!("shaders/fragment.glsl");
+        let fragment_ir = compiler
+            .compile_into_spirv(
+                fragment_source,
+                ShaderKind::Fragment,
+                "shaders/fragment.glsl",
+                "main",
+                None,
+            )
+            .unwrap()
+            .as_binary_u8();
+    }
+
+    // set up rendering pipeline
+    // let pipeline: GraphicsPipeline;
+    // {
+    //     pipeline = device
+    //         .create_graphics_pipeline()
+    //         .with_vertex_shader(value)
+    //         .with_fragment_shader(value)
+    //         .with_vertex_input_state(value)
+    //         .with_primitive_type(value)
+    //         .with_rasterizer_state(value)
+    //         .with_depth_stencil_state(value)
+    //         .with_target_info(value)
+    //         .build()
+    //         .unwrap();
+    // }
+
+    // for 2D rendering
+    let mut canvas = window.clone().into_canvas();
     canvas
         .set_logical_size(640, 480, SDL_RendererLogicalPresentation::LETTERBOX)
         .unwrap();
@@ -86,6 +133,10 @@ fn main() {
                 sdl3::event::Event::Quit { .. }
                 | sdl3::event::Event::KeyDown {
                     keycode: Some(Keycode::Escape),
+                    ..
+                }
+                | sdl3::event::Event::KeyDown {
+                    keycode: Some(Keycode::Q),
                     ..
                 } => {
                     break 'main_loop;
