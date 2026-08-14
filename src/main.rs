@@ -1,3 +1,4 @@
+use glam::{mat4, vec3, vec4, Mat4};
 use sdl3::{
     self,
     gpu::{
@@ -101,12 +102,6 @@ fn main() {
         }
         let data_upload_fence = data_upload.submit_and_acquire_fence(&device).unwrap();
         while !data_upload_fence.query(&device) {}
-
-        // for testing
-        println!(
-            "{:?}",
-            download_buffer_content::<f32>(&device, &vertex_buffer)
-        );
     }
 
     // load and render shaders
@@ -210,8 +205,27 @@ fn main() {
             .unwrap();
     }
 
-    let mut event_pump = sdl.event_pump().unwrap();
+    // camera
+    let camera_projection;
+    {
+        // SDL_GPU uses DirectX-like convention
+        use glam::camera::rh::proj::directx::perspective;
+        use glam::camera::rh::view::look_at_mat4;
 
+        let (width, height) = window.size();
+        let persp = perspective(70.0, width as f32 / height as f32, 0.1, 200.0);
+        let look = look_at_mat4(
+            vec3(3.0, 2.0, 1.0),
+            vec3(0.0, 0.0, 0.0),
+            vec3(0.0, 0.0, 1.0),
+        );
+        camera_projection = persp * look;
+        {
+            println!("{}", mat4_as_glsl(camera_projection));
+        }
+    }
+
+    let mut event_pump = sdl.event_pump().unwrap();
     'main_loop: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -238,16 +252,21 @@ fn main() {
                 .with_load_op(SDL_GPULoadOp::CLEAR)
                 .with_clear_color(Color::RGB(127, 127, 127));
 
+            let camera_data = camera_projection.to_cols_array();
+            cbuf.push_vertex_uniform_data(0, &camera_data);
             let render_pass = device
                 .begin_render_pass(&cbuf, &[color_target_info], None)
                 .unwrap();
-            render_pass.bind_graphics_pipeline(&pipeline);
-            render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&vertex_buffer)]);
-            render_pass.bind_index_buffer(
-                &BufferBinding::new().with_buffer(&index_buffer),
-                IndexElementSize::_32BIT,
-            );
-            render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
+            {
+                render_pass.bind_graphics_pipeline(&pipeline);
+                render_pass
+                    .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&vertex_buffer)]);
+                render_pass.bind_index_buffer(
+                    &BufferBinding::new().with_buffer(&index_buffer),
+                    IndexElementSize::_32BIT,
+                );
+                render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
+            }
             device.end_render_pass(render_pass);
 
             let fence = cbuf.submit_and_acquire_fence(&device).unwrap();
@@ -263,6 +282,7 @@ fn main() {
 /// Downloads the content of a buffer for debugging purposes
 ///
 /// Runs a whole buffer pass and blocks.
+#[allow(dead_code)]
 fn download_buffer_content<T: std::fmt::Debug + std::marker::Copy>(
     device: &sdl3::gpu::Device,
     vertex_buffer: &sdl3::gpu::Buffer,
@@ -301,4 +321,22 @@ fn download_buffer_content<T: std::fmt::Debug + std::marker::Copy>(
 
     let content = download_buffer.map::<T>(device, false).mem().to_owned();
     content
+}
+
+fn mat4_as_glsl(mat: Mat4) -> String {
+    let (x, y, z, w) = (mat.x_axis, mat.y_axis, mat.z_axis, mat.w_axis);
+    #[rustfmt::skip]
+    return format!(
+"mat4(
+    vec4({:?}, {:?}, {:?}, {:?}),
+    vec4({:?}, {:?}, {:?}, {:?}),
+    vec4({:?}, {:?}, {:?}, {:?}),
+    vec4({:?}, {:?}, {:?}, {:?})
+)
+",
+        x.x, x.y, x.z, x.w,
+        y.x, y.y, y.z, y.w,
+        z.x, z.y, z.z, z.w,
+        w.x, w.y, w.z, w.w,
+    );
 }
