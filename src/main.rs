@@ -2,7 +2,13 @@ use std::f64::consts::PI;
 
 use sdl3::{
     self,
-    gpu::{BufferRegion, BufferUsageFlags, GraphicsPipeline, ShaderFormat, TransferBufferLocation},
+    gpu::{
+        BufferRegion, BufferUsageFlags, ColorTargetBlendState, ColorTargetDescription, CompareOp,
+        CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
+        GraphicsPipelineTargetInfo, RasterizerState, Shader, ShaderFormat, ShaderStage,
+        TextureFormat, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
+        VertexInputState,
+    },
     keyboard::Keycode,
     pixels::Color,
     sys::render::SDL_RendererLogicalPresentation,
@@ -21,22 +27,24 @@ fn main() {
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
-    const VERTEX_FLOAT_COUNT: usize = (2 + 3) * 3;
+    const VERTEX_F32_SIZE: usize = 2 + 3;
+    const VERTEX_SIZE: usize = size_of::<f32>() * VERTEX_F32_SIZE;
+    const VERTEX_COUNT: usize = 3;
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size((size_of::<f32>() * VERTEX_FLOAT_COUNT) as u32)
+        .with_size((VERTEX_SIZE * VERTEX_COUNT) as u32)
         .build()
         .unwrap();
 
     // upload data to vertex buffer
     {
         #[rustfmt::skip]
-        let vertex_data: [f32; VERTEX_FLOAT_COUNT] = [
+        let vertex_data: [f32; VERTEX_F32_SIZE * VERTEX_COUNT] = [
         //   x     y    r    g    b
              0.5,  0.0, 1.0, 0.0, 0.0,
-             0.5, -0.5, 0.0, 1.0, 0.0,
-            -0.5, -0.5, 0.0, 0.0, 1.0,
+             -0.5, -0.5, 0.0, 1.0, 0.0,
+             0.5, -0.5, 0.0, 0.0, 1.0,
         ];
         let transfer_buffer = device
             .create_transfer_buffer()
@@ -73,6 +81,8 @@ fn main() {
     }
 
     // load and render shaders
+    let vertex_shader: Shader;
+    let fragment_shader: Shader;
     {
         use shaderc::ShaderKind;
 
@@ -87,8 +97,16 @@ fn main() {
                 "main",
                 None,
             )
-            .unwrap()
-            .as_binary_u8();
+            .unwrap();
+        vertex_shader = device
+            .create_shader()
+            .with_code(
+                ShaderFormat::SPIRV,
+                vertex_ir.as_binary_u8(),
+                ShaderStage::Vertex,
+            )
+            .build()
+            .unwrap();
 
         let fragment_source = include_str!("shaders/fragment.glsl");
         let fragment_ir = compiler
@@ -99,25 +117,70 @@ fn main() {
                 "main",
                 None,
             )
-            .unwrap()
-            .as_binary_u8();
+            .unwrap();
+        fragment_shader = device
+            .create_shader()
+            .with_code(
+                ShaderFormat::SPIRV,
+                fragment_ir.as_binary_u8(),
+                ShaderStage::Vertex,
+            )
+            .build()
+            .unwrap();
     }
 
     // set up rendering pipeline
-    // let pipeline: GraphicsPipeline;
-    // {
-    //     pipeline = device
-    //         .create_graphics_pipeline()
-    //         .with_vertex_shader(value)
-    //         .with_fragment_shader(value)
-    //         .with_vertex_input_state(value)
-    //         .with_primitive_type(value)
-    //         .with_rasterizer_state(value)
-    //         .with_depth_stencil_state(value)
-    //         .with_target_info(value)
-    //         .build()
-    //         .unwrap();
-    // }
+    let pipeline: GraphicsPipeline;
+    {
+        use sdl3::gpu::{PrimitiveType, VertexElementFormat, VertexInputRate};
+
+        let texture_format = device.get_swapchain_texture_format(&window);
+
+        pipeline = device
+            .create_graphics_pipeline()
+            .with_vertex_shader(&vertex_shader)
+            .with_fragment_shader(&fragment_shader)
+            .with_vertex_input_state(
+                VertexInputState::new()
+                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
+                        .with_slot(0)
+                        .with_pitch(VERTEX_SIZE as u32)
+                        .with_input_rate(VertexInputRate::Vertex)])
+                    .with_vertex_attributes(&[
+                        VertexAttribute::new()
+                            .with_buffer_slot(0)
+                            // va_position
+                            .with_location(0)
+                            .with_offset(0)
+                            .with_format(VertexElementFormat::Float2),
+                        VertexAttribute::new()
+                            .with_buffer_slot(0)
+                            // va_color
+                            .with_location(1)
+                            .with_offset(2 * size_of::<f32>() as u32)
+                            .with_format(VertexElementFormat::Float3),
+                    ]),
+            )
+            .with_primitive_type(PrimitiveType::TriangleList)
+            .with_rasterizer_state(
+                RasterizerState::new()
+                    .with_fill_mode(FillMode::Fill)
+                    .with_cull_mode(CullMode::Back)
+                    .with_front_face(FrontFace::CounterClockwise),
+            )
+            .with_depth_stencil_state(
+                DepthStencilState::new()
+                    .with_enable_depth_test(true)
+                    .with_compare_op(CompareOp::Greater),
+            )
+            .with_target_info(
+                GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
+                    ColorTargetDescription::new().with_format(texture_format), // think not required: .with_blend_state(?),
+                ]),
+            )
+            .build()
+            .unwrap();
+    }
 
     // for 2D rendering
     let mut canvas = window.clone().into_canvas();
