@@ -26,16 +26,16 @@ fn main() {
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
-    const VERTEX_F32_SIZE: u32 = 2 + 3;
+    const VERTEX_F32_SIZE: u32 = 3 + 3;
     const VERTEX_SIZE: u32 = size_of::<f32>() as u32 * VERTEX_F32_SIZE;
     const VERTEX_COUNT: u32 = 4;
     #[rustfmt::skip]
     let vertex_data: [f32; (VERTEX_F32_SIZE * VERTEX_COUNT) as usize] = [
-    //     x     y    r    g    b
-        -0.5, -0.5, 1.00, 0.00, 0.00,
-         0.5, -0.5, 0.25, 0.75, 0.00,
-         0.5,  0.5, 0.00, 0.50, 0.50,
-        -0.5,  0.5, 0.25, 0.00, 0.75,
+    //     x     y     z     r     g     b
+        -0.5, -0.5,  0.0, 1.00, 0.00, 0.00,
+         0.5, -0.5,  0.0, 0.25, 0.75, 0.00,
+         0.5,  0.5,  0.0, 0.00, 0.50, 0.50,
+        -0.5,  0.5,  0.0, 0.25, 0.00, 0.75,
     ];
     let vertex_buffer = device
         .create_buffer()
@@ -180,12 +180,12 @@ fn main() {
                             // va_position
                             .with_location(0)
                             .with_offset(0)
-                            .with_format(VertexElementFormat::Float2),
+                            .with_format(VertexElementFormat::Float3),
                         VertexAttribute::new()
                             .with_buffer_slot(0)
                             // va_color
                             .with_location(1)
-                            .with_offset(2 * size_of::<f32>() as u32)
+                            .with_offset(3 * size_of::<f32>() as u32)
                             .with_format(VertexElementFormat::Float3),
                     ]),
             )
