@@ -1,4 +1,6 @@
-use glam::{mat4, vec3, vec4, Mat4};
+#![allow(dead_code)]
+
+use glam::{vec3, Mat4};
 use sdl3::{
     self,
     gpu::{
@@ -129,6 +131,7 @@ fn main() {
                 vertex_ir.as_binary_u8(),
                 ShaderStage::Vertex,
             )
+            .with_uniform_buffers(1)
             .build()
             .unwrap();
 
@@ -188,7 +191,7 @@ fn main() {
             .with_rasterizer_state(
                 RasterizerState::new()
                     .with_fill_mode(FillMode::Fill)
-                    .with_cull_mode(CullMode::Back)
+                    .with_cull_mode(CullMode::None)
                     .with_front_face(FrontFace::CounterClockwise),
             )
             .with_depth_stencil_state(
@@ -203,26 +206,6 @@ fn main() {
             )
             .build()
             .unwrap();
-    }
-
-    // camera
-    let camera_projection;
-    {
-        // SDL_GPU uses DirectX-like convention
-        use glam::camera::rh::proj::directx::perspective;
-        use glam::camera::rh::view::look_at_mat4;
-
-        let (width, height) = window.size();
-        let persp = perspective(70.0, width as f32 / height as f32, 0.1, 200.0);
-        let look = look_at_mat4(
-            vec3(3.0, 2.0, 1.0),
-            vec3(0.0, 0.0, 0.0),
-            vec3(0.0, 0.0, 1.0),
-        );
-        camera_projection = persp * look;
-        {
-            println!("{}", mat4_as_glsl(camera_projection));
-        }
     }
 
     let mut event_pump = sdl.event_pump().unwrap();
@@ -243,6 +226,25 @@ fn main() {
                 _ => {}
             }
         }
+
+        // logic
+        let projection;
+        {
+            // camera stuff
+            // SDL_GPU uses DirectX-like convention
+            use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
+
+            let (width, height) = window.size();
+            let persp = perspective(70.0, width as f32 / height as f32, 0.1, 200.0);
+            let look = look_at_mat4(
+                vec3(3.0, 2.0, 1.0),
+                vec3(0.0, 0.0, 0.0),
+                vec3(0.0, 0.0, 1.0),
+            );
+            projection = persp * look;
+        }
+
+        // render
         {
             let mut cbuf = device.acquire_command_buffer().unwrap();
 
@@ -252,8 +254,6 @@ fn main() {
                 .with_load_op(SDL_GPULoadOp::CLEAR)
                 .with_clear_color(Color::RGB(127, 127, 127));
 
-            let camera_data = camera_projection.to_cols_array();
-            cbuf.push_vertex_uniform_data(0, &camera_data);
             let render_pass = device
                 .begin_render_pass(&cbuf, &[color_target_info], None)
                 .unwrap();
@@ -265,6 +265,7 @@ fn main() {
                     &BufferBinding::new().with_buffer(&index_buffer),
                     IndexElementSize::_32BIT,
                 );
+                cbuf.push_vertex_uniform_data(0, &projection);
                 render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
             }
             device.end_render_pass(render_pass);
@@ -282,7 +283,6 @@ fn main() {
 /// Downloads the content of a buffer for debugging purposes
 ///
 /// Runs a whole buffer pass and blocks.
-#[allow(dead_code)]
 fn download_buffer_content<T: std::fmt::Debug + std::marker::Copy>(
     device: &sdl3::gpu::Device,
     vertex_buffer: &sdl3::gpu::Buffer,
