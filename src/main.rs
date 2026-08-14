@@ -1,17 +1,14 @@
-use std::f64::consts::PI;
-
 use sdl3::{
     self,
     gpu::{
-        BufferRegion, BufferUsageFlags, ColorTargetBlendState, ColorTargetDescription, CompareOp,
-        CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
+        BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
+        CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
         GraphicsPipelineTargetInfo, RasterizerState, Shader, ShaderFormat, ShaderStage,
-        TextureFormat, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexInputState,
+        TransferBufferLocation, VertexAttribute, VertexBufferDescription, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
-    sys::render::SDL_RendererLogicalPresentation,
+    sys::gpu::SDL_GPULoadOp,
 };
 
 fn main() {
@@ -42,7 +39,7 @@ fn main() {
         #[rustfmt::skip]
         let vertex_data: [f32; VERTEX_F32_SIZE * VERTEX_COUNT] = [
         //   x     y    r    g    b
-             0.5,  0.0, 1.0, 0.0, 0.0,
+             0.0,  0.5, 1.0, 0.0, 0.0,
              -0.5, -0.5, 0.0, 1.0, 0.0,
              0.5, -0.5, 0.0, 0.0, 1.0,
         ];
@@ -76,7 +73,7 @@ fn main() {
         // for testing
         println!(
             "{:?}",
-            download_buffer_content::<f32>(&device, vertex_buffer)
+            download_buffer_content::<f32>(&device, &vertex_buffer)
         );
     }
 
@@ -131,10 +128,9 @@ fn main() {
 
     // set up rendering pipeline
     let pipeline: GraphicsPipeline;
+    let texture_format = device.get_swapchain_texture_format(&window);
     {
         use sdl3::gpu::{PrimitiveType, VertexElementFormat, VertexInputRate};
-
-        let texture_format = device.get_swapchain_texture_format(&window);
 
         pipeline = device
             .create_graphics_pipeline()
@@ -175,18 +171,12 @@ fn main() {
             )
             .with_target_info(
                 GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
-                    ColorTargetDescription::new().with_format(texture_format), // think not required: .with_blend_state(?),
+                    ColorTargetDescription::new().with_format(texture_format), // think not required: .with_blend_state(?)
                 ]),
             )
             .build()
             .unwrap();
     }
-
-    // for 2D rendering
-    let mut canvas = window.clone().into_canvas();
-    canvas
-        .set_logical_size(640, 480, SDL_RendererLogicalPresentation::LETTERBOX)
-        .unwrap();
 
     let mut event_pump = sdl.event_pump().unwrap();
 
@@ -207,22 +197,23 @@ fn main() {
                 _ => {}
             }
         }
-
-        let color = {
-            let ticks = sdl3::timer::ticks() as f64 / 1000.0;
-            let red = 0.5 * (1.0 + f64::sin(ticks));
-            let green = 0.5 * (1.0 + f64::sin(ticks + PI * 2. / 3.));
-            let blue = 0.5 * (1.0 + f64::sin(ticks + PI * 4. / 3.));
-            Color::RGB(
-                (red * u8::MAX as f64) as u8,
-                (green * u8::MAX as f64) as u8,
-                (blue * u8::MAX as f64) as u8,
-            )
-        };
-
-        canvas.set_draw_color(color);
-        canvas.clear();
-        canvas.present();
+        {
+            let mut cbuf = device.acquire_command_buffer().unwrap();
+            let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
+            let color_target_info = ColorTargetInfo::default()
+                .with_texture(&screen_texture)
+                .with_load_op(SDL_GPULoadOp::CLEAR)
+                .with_clear_color(Color::RGB(127, 127, 127));
+            let render_pass = device
+                .begin_render_pass(&cbuf, &[color_target_info], None)
+                .unwrap();
+            render_pass.bind_graphics_pipeline(&pipeline);
+            render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&vertex_buffer)]);
+            render_pass.draw_primitives(3, 1, 0, 0);
+            device.end_render_pass(render_pass);
+            let fence = cbuf.submit_and_acquire_fence(&device).unwrap();
+            while !fence.query(&device) {}
+        }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
     }
@@ -235,7 +226,7 @@ fn main() {
 /// Runs a whole buffer pass and blocks.
 fn download_buffer_content<T: std::fmt::Debug + std::marker::Copy>(
     device: &sdl3::gpu::Device,
-    vertex_buffer: sdl3::gpu::Buffer,
+    vertex_buffer: &sdl3::gpu::Buffer,
 ) -> Vec<T> {
     let download_buffer = device
         .create_transfer_buffer()
