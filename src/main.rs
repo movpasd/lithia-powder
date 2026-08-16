@@ -33,22 +33,20 @@ fn main() {
     // prepare models
     let vertex_attributes: [VertexAttribute; _];
     let vertex_size: u32;
-    let vertex_count: u32;
-    let vertex_data: [f32; _];
+    let vertex_data: [[f32; _]; _];
     let index_size: u32;
     let index_data: [u32; _];
-    let index_count: u32;
     {
         let vertex_f32_size = 3 + 3;
         vertex_size = size_of::<f32>() as u32 * vertex_f32_size;
-        vertex_count = 4;
         vertex_data = [
-            -0.5, -0.5, 0.0, 1.00, 0.00, 0.00, 0.5, -0.5, 0.0, 0.25, 0.75, 0.00, 0.5, 0.5, 0.0,
-            0.00, 0.50, 0.50, -0.5, 0.5, 0.0, 0.25, 0.00, 0.75,
+            [-0.5, -0.5, 0.0, 1.00, 0.00, 0.00],
+            [0.5, -0.5, 0.0, 0.25, 0.75, 0.00],
+            [0.5, 0.5, 0.0, 0.00, 0.50, 0.50],
+            [-0.5, 0.5, 0.0, 0.25, 0.00, 0.75],
         ];
 
         index_size = size_of::<u32>() as u32;
-        index_count = 6u32;
         index_data = [0, 1, 2, 2, 3, 0];
         vertex_attributes = [
             VertexAttribute::new()
@@ -70,7 +68,7 @@ fn main() {
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(vertex_size * vertex_count)
+        .with_size(vertex_size * vertex_data.len() as u32)
         .build()
         .unwrap();
     let vertex_buffer_desc = VertexBufferDescription::new()
@@ -80,7 +78,7 @@ fn main() {
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(index_size * index_count)
+        .with_size(index_size * index_data.len() as u32)
         .build()
         .unwrap();
     {
