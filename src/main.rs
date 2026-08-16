@@ -31,54 +31,56 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     // prepare models
-    const VERTEX_F32_SIZE: u32 = 3 + 3;
-    const VERTEX_SIZE: u32 = size_of::<f32>() as u32 * VERTEX_F32_SIZE;
-    const VERTEX_COUNT: u32 = 4;
-    #[rustfmt::skip]
-    let vertex_data: [f32; (VERTEX_F32_SIZE * VERTEX_COUNT) as usize] = [
-    //     x     y     z     r     g     b
-        -0.5, -0.5,  0.0, 1.00, 0.00, 0.00,
-         0.5, -0.5,  0.0, 0.25, 0.75, 0.00,
-         0.5,  0.5,  0.0, 0.00, 0.50, 0.50,
-        -0.5,  0.5,  0.0, 0.25, 0.00, 0.75,
-    ];
-    const INDEX_SIZE: u32 = size_of::<u32>() as u32;
-    const INDEX_COUNT: u32 = 6;
-    #[rustfmt::skip]
-    let index_data: [u32; INDEX_COUNT as usize] = [
-        0, 1, 2,
-        2, 3, 0,
-    ];
-    let vertex_attributes = [
-        VertexAttribute::new()
-            .with_buffer_slot(0)
-            // va_position
-            .with_location(0)
-            .with_offset(0)
-            .with_format(VertexElementFormat::Float3),
-        VertexAttribute::new()
-            .with_buffer_slot(0)
-            // va_color
-            .with_location(1)
-            .with_offset(3 * size_of::<f32>() as u32)
-            .with_format(VertexElementFormat::Float3),
-    ];
+    let vertex_attributes: [VertexAttribute; _];
+    let vertex_size: u32;
+    let vertex_count: u32;
+    let vertex_data: [f32; _];
+    let index_size: u32;
+    let index_data: [u32; _];
+    let index_count: u32;
+    {
+        let vertex_f32_size = 3 + 3;
+        vertex_size = size_of::<f32>() as u32 * vertex_f32_size;
+        vertex_count = 4;
+        vertex_data = [
+            -0.5, -0.5, 0.0, 1.00, 0.00, 0.00, 0.5, -0.5, 0.0, 0.25, 0.75, 0.00, 0.5, 0.5, 0.0,
+            0.00, 0.50, 0.50, -0.5, 0.5, 0.0, 0.25, 0.00, 0.75,
+        ];
+
+        index_size = size_of::<u32>() as u32;
+        index_count = 6u32;
+        index_data = [0, 1, 2, 2, 3, 0];
+        vertex_attributes = [
+            VertexAttribute::new()
+                .with_buffer_slot(0)
+                // va_position
+                .with_location(0)
+                .with_offset(0)
+                .with_format(VertexElementFormat::Float3),
+            VertexAttribute::new()
+                .with_buffer_slot(0)
+                // va_color
+                .with_location(1)
+                .with_offset(3 * size_of::<f32>() as u32)
+                .with_format(VertexElementFormat::Float3),
+        ];
+    }
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(VERTEX_SIZE * VERTEX_COUNT)
+        .with_size(vertex_size * vertex_count)
         .build()
         .unwrap();
     let vertex_buffer_desc = VertexBufferDescription::new()
         .with_slot(0)
-        .with_pitch(VERTEX_SIZE)
+        .with_pitch(vertex_size)
         .with_input_rate(VertexInputRate::Vertex);
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(INDEX_SIZE * INDEX_COUNT)
+        .with_size(index_size * index_count)
         .build()
         .unwrap();
     {
