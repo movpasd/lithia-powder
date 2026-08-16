@@ -31,48 +31,33 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     // prepare models
-    let vertex_attributes: [VertexAttribute; _];
+    let mesh: Mesh;
+    let vertex_attributes: Vec<VertexAttribute>;
     let vertex_size: u32;
-    let vertex_data: [[f32; _]; _];
-    let index_data: [u32; _];
+    let vertex_data: &[u8];
+    let index_data: &[u8];
     {
-        let vertex_f32_size = 3 + 3;
-        vertex_size = size_of::<f32>() as u32 * vertex_f32_size;
-        vertex_data = [
-            [-0.5, -0.5, 0.0, 1.00, 0.00, 0.00],
-            [0.5, -0.5, 0.0, 0.25, 0.75, 0.00],
-            [0.5, 0.5, 0.0, 0.00, 0.50, 0.50],
-            [-0.5, 0.5, 0.0, 0.25, 0.00, 0.75],
-        ];
+        vertex_attributes = Vertex::get_attributes(0, 0);
 
-        index_data = [0, 1, 2, 2, 3, 0];
-        vertex_attributes = [
-            VertexAttribute::new()
-                .with_buffer_slot(0)
-                // va_position
-                .with_location(0)
-                .with_offset(0)
-                .with_format(VertexElementFormat::Float3),
-            VertexAttribute::new()
-                .with_buffer_slot(0)
-                // va_color
-                .with_location(1)
-                .with_offset(3 * size_of::<f32>() as u32)
-                .with_format(VertexElementFormat::Float3),
-        ];
+        mesh = cube_mesh();
+
+        vertex_data = bytemuck::cast_slice(&mesh.vertexes);
+        index_data = bytemuck::cast_slice(&mesh.indexes);
+
+        vertex_size = size_of::<Vertex>() as u32;
     }
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(vertex_size * vertex_data.len() as u32)
+        .with_size(vertex_data.len() as u32)
         .build()
         .unwrap();
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size((size_of::<u32>() * index_data.len()) as u32)
+        .with_size(index_data.len() as u32)
         .build()
         .unwrap();
     {
@@ -84,7 +69,7 @@ fn main() {
         vertex_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(bytemuck::bytes_of(&vertex_data));
+            .copy_from_slice(vertex_data);
 
         let index_transfer_buf = device
             .create_transfer_buffer()
@@ -94,7 +79,7 @@ fn main() {
         index_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(bytemuck::bytes_of(&index_data));
+            .copy_from_slice(index_data);
 
         let data_upload = device.acquire_command_buffer().unwrap();
         {
@@ -347,13 +332,22 @@ fn mat4_as_glsl(mat: Mat4) -> String {
     );
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
 struct Vertex {
     position: Vec4,
     color: Vec4,
     normal: Vec4,
 }
+// check alignment
+const _: () = {
+    let fields_size = {
+        size_of::<Vec4>() // position
+        + size_of::<Vec4>() // color
+        + size_of::<Vec4>() // normal
+    };
+    assert!(size_of::<Vertex>() == fields_size);
+};
 impl Vertex {
     const ATTRIBUTE_COUNT: u32 = 3;
 
@@ -377,6 +371,9 @@ impl Vertex {
         ]
     }
 }
+
+unsafe impl bytemuck::Zeroable for Vertex {}
+unsafe impl bytemuck::Pod for Vertex {}
 
 /// do not store more than u32::MAX
 #[derive(Debug, Clone)]
