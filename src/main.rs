@@ -8,7 +8,7 @@ use sdl3::{
         CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
         GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
         ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexElementFormat, VertexInputState,
+        VertexElementFormat, VertexInputRate, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -16,6 +16,7 @@ use sdl3::{
 };
 
 fn main() {
+    // set up SDL
     let sdl = sdl3::init().unwrap();
 
     let video_sys = sdl.video().unwrap();
@@ -29,39 +30,22 @@ fn main() {
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
-    const VERTEX_F32_SIZE: u32 = 3 + 3;
-    const VERTEX_SIZE: u32 = size_of::<f32>() as u32 * VERTEX_F32_SIZE;
-    const VERTEX_COUNT: u32 = 4;
-    #[rustfmt::skip]
-    let vertex_data: [f32; (VERTEX_F32_SIZE * VERTEX_COUNT) as usize] = [
-    //     x     y     z     r     g     b
-        -0.5, -0.5,  0.0, 1.00, 0.00, 0.00,
-         0.5, -0.5,  0.0, 0.25, 0.75, 0.00,
-         0.5,  0.5,  0.0, 0.00, 0.50, 0.50,
-        -0.5,  0.5,  0.0, 0.25, 0.00, 0.75,
-    ];
+    // prepare models
+    let mesh = cube_mesh();
+
+    // upload data to GPU geometry buffers
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(VERTEX_SIZE * VERTEX_COUNT)
+        .with_size(mesh.vertexes_bytes_size())
         .build()
         .unwrap();
-
-    const INDEX_SIZE: u32 = size_of::<u32>() as u32;
-    const INDEX_COUNT: u32 = 6;
-    #[rustfmt::skip]
-    let index_data: [u32; INDEX_COUNT as usize] = [
-        0, 1, 2,
-        2, 3, 0,
-    ];
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(INDEX_SIZE * INDEX_COUNT)
+        .with_size(mesh.indexes_bytes_size())
         .build()
         .unwrap();
-
-    // upload data to geometry buffers
     {
         let vertex_transfer_buf = device
             .create_transfer_buffer()
@@ -71,7 +55,7 @@ fn main() {
         vertex_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(bytemuck::bytes_of(&vertex_data));
+            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.vertexes));
 
         let index_transfer_buf = device
             .create_transfer_buffer()
@@ -81,7 +65,7 @@ fn main() {
         index_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(bytemuck::bytes_of(&index_data));
+            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.indexes));
 
         let data_upload = device.acquire_command_buffer().unwrap();
         {
@@ -160,7 +144,7 @@ fn main() {
     let pipeline: GraphicsPipeline;
     let texture_format = device.get_swapchain_texture_format(&window);
     {
-        use sdl3::gpu::{PrimitiveType, VertexElementFormat, VertexInputRate};
+        use sdl3::gpu::PrimitiveType;
 
         pipeline = device
             .create_graphics_pipeline()
@@ -170,22 +154,9 @@ fn main() {
                 VertexInputState::new()
                     .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
                         .with_slot(0)
-                        .with_pitch(VERTEX_SIZE)
+                        .with_pitch(size_of::<Vertex>() as u32)
                         .with_input_rate(VertexInputRate::Vertex)])
-                    .with_vertex_attributes(&[
-                        VertexAttribute::new()
-                            .with_buffer_slot(0)
-                            // va_position
-                            .with_location(0)
-                            .with_offset(0)
-                            .with_format(VertexElementFormat::Float3),
-                        VertexAttribute::new()
-                            .with_buffer_slot(0)
-                            // va_color
-                            .with_location(1)
-                            .with_offset(3 * size_of::<f32>() as u32)
-                            .with_format(VertexElementFormat::Float3),
-                    ]),
+                    .with_vertex_attributes(&Vertex::get_attributes(0, 0)),
             )
             .with_primitive_type(PrimitiveType::TriangleList)
             .with_rasterizer_state(
@@ -208,6 +179,7 @@ fn main() {
             .unwrap();
     }
 
+    // event loop
     let mut event_pump = sdl.event_pump().unwrap();
     'main_loop: loop {
         for event in event_pump.poll_iter() {
@@ -346,13 +318,22 @@ fn mat4_as_glsl(mat: Mat4) -> String {
     );
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
 struct Vertex {
     position: Vec4,
     color: Vec4,
     normal: Vec4,
 }
+// check alignment
+const _: () = {
+    let fields_size = {
+        size_of::<Vec4>() // position
+        + size_of::<Vec4>() // color
+        + size_of::<Vec4>() // normal
+    };
+    assert!(size_of::<Vertex>() == fields_size);
+};
 impl Vertex {
     const ATTRIBUTE_COUNT: u32 = 3;
 
@@ -377,6 +358,9 @@ impl Vertex {
     }
 }
 
+unsafe impl bytemuck::Zeroable for Vertex {}
+unsafe impl bytemuck::Pod for Vertex {}
+
 /// do not store more than u32::MAX
 #[derive(Debug, Clone)]
 struct Mesh {
@@ -390,22 +374,25 @@ impl Mesh {
             indexes: vec![],
         }
     }
-
     fn len(&self) -> u32 {
         self.indexes.len() as u32
     }
-
     fn append(&mut self, other: &mut Mesh) {
         other.indexes.iter_mut().for_each(|i| *i += self.len());
         self.vertexes.append(&mut other.vertexes);
         self.indexes.append(&mut other.indexes);
     }
-
     fn transform(&mut self, m: Mat4) {
         self.vertexes.iter_mut().for_each(|v| {
             v.position = m * v.position;
             v.normal = m * v.normal
         });
+    }
+    fn vertexes_bytes_size(&self) -> u32 {
+        size_of_val(self.vertexes.as_slice()) as u32
+    }
+    fn indexes_bytes_size(&self) -> u32 {
+        size_of_val(self.indexes.as_slice()) as u32
     }
 }
 
@@ -420,10 +407,10 @@ fn cube_mesh() -> Mesh {
             [0.5, 0.5, 0.0, 1.0],
         ];
         let vertex_colors = [
-            [1.0, 0.0, 0.0, 1.0],
-            [0.25, 0.75, 0.0, 1.0],
-            [0.0, 0.5, 0.5, 1.0],
-            [0.25, 0.0, 0.75, 1.0],
+            [0.0, 1.0, 1.0, 1.0],
+            [0.75, 0.25, 1.0, 1.0],
+            [1.0, 0.5, 0.5, 1.0],
+            [0.75, 1.0, 0.25, 1.0],
         ];
         let vertex_normals = [
             [0.0, 0.0, 1.0, 1.0],
