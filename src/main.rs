@@ -31,33 +31,19 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     // prepare models
-    let mesh: Mesh;
-    let vertex_attributes: Vec<VertexAttribute>;
-    let vertex_size: u32;
-    let vertex_data: &[u8];
-    let index_data: &[u8];
-    {
-        vertex_attributes = Vertex::get_attributes(0, 0);
-
-        mesh = cube_mesh();
-
-        vertex_data = bytemuck::cast_slice(&mesh.vertexes);
-        index_data = bytemuck::cast_slice(&mesh.indexes);
-
-        vertex_size = size_of::<Vertex>() as u32;
-    }
+    let mesh = cube_mesh();
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(vertex_data.len() as u32)
+        .with_size(mesh.vertexes_bytes_size())
         .build()
         .unwrap();
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(index_data.len() as u32)
+        .with_size(mesh.indexes_bytes_size())
         .build()
         .unwrap();
     {
@@ -69,7 +55,7 @@ fn main() {
         vertex_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(vertex_data);
+            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.vertexes));
 
         let index_transfer_buf = device
             .create_transfer_buffer()
@@ -79,7 +65,7 @@ fn main() {
         index_transfer_buf
             .map(&device, false)
             .mem_mut()
-            .copy_from_slice(index_data);
+            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.indexes));
 
         let data_upload = device.acquire_command_buffer().unwrap();
         {
@@ -168,9 +154,9 @@ fn main() {
                 VertexInputState::new()
                     .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
                         .with_slot(0)
-                        .with_pitch(vertex_size)
+                        .with_pitch(size_of::<Vertex>() as u32)
                         .with_input_rate(VertexInputRate::Vertex)])
-                    .with_vertex_attributes(&vertex_attributes),
+                    .with_vertex_attributes(&Vertex::get_attributes(0, 0)),
             )
             .with_primitive_type(PrimitiveType::TriangleList)
             .with_rasterizer_state(
@@ -388,22 +374,25 @@ impl Mesh {
             indexes: vec![],
         }
     }
-
     fn len(&self) -> u32 {
         self.indexes.len() as u32
     }
-
     fn append(&mut self, other: &mut Mesh) {
         other.indexes.iter_mut().for_each(|i| *i += self.len());
         self.vertexes.append(&mut other.vertexes);
         self.indexes.append(&mut other.indexes);
     }
-
     fn transform(&mut self, m: Mat4) {
         self.vertexes.iter_mut().for_each(|v| {
             v.position = m * v.position;
             v.normal = m * v.normal
         });
+    }
+    fn vertexes_bytes_size(&self) -> u32 {
+        size_of_val(self.vertexes.as_slice()) as u32
+    }
+    fn indexes_bytes_size(&self) -> u32 {
+        size_of_val(self.indexes.as_slice()) as u32
     }
 }
 
