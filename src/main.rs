@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use glam::{vec3, Mat4, Vec3};
+use glam::{vec3, Mat4, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -235,7 +235,12 @@ fn main() {
             use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
 
             let (width, height) = window.size();
-            let persp = perspective(70.0f32.to_radians(), width as f32 / height as f32, 0.1, 200.0);
+            let persp = perspective(
+                70.0f32.to_radians(),
+                width as f32 / height as f32,
+                0.1,
+                200.0,
+            );
             let look = look_at_mat4(
                 vec3(3.0, 2.0, 1.0),
                 vec3(0.0, 0.0, 0.0),
@@ -339,4 +344,124 @@ fn mat4_as_glsl(mat: Mat4) -> String {
         z.x, z.y, z.z, z.w,
         w.x, w.y, w.z, w.w,
     );
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[repr(C)]
+struct Vertex {
+    position: Vec4,
+    color: Vec4,
+    normal: Vec4,
+}
+impl Vertex {
+    const ATTRIBUTE_COUNT: u32 = 3;
+
+    fn get_attributes(buffer_slot: u32, first_location: u32) -> Vec<VertexAttribute> {
+        vec![
+            VertexAttribute::new()
+                .with_buffer_slot(buffer_slot)
+                .with_location(first_location)
+                .with_offset(0)
+                .with_format(VertexElementFormat::Float4),
+            VertexAttribute::new()
+                .with_buffer_slot(buffer_slot)
+                .with_location(first_location + 1)
+                .with_offset(16)
+                .with_format(VertexElementFormat::Float4),
+            VertexAttribute::new()
+                .with_buffer_slot(buffer_slot)
+                .with_location(first_location + 2)
+                .with_offset(32)
+                .with_format(VertexElementFormat::Float4),
+        ]
+    }
+}
+
+/// do not store more than u32::MAX
+#[derive(Debug, Clone)]
+struct Mesh {
+    vertexes: Vec<Vertex>,
+    indexes: Vec<u32>,
+}
+impl Mesh {
+    fn new_empty() -> Mesh {
+        Mesh {
+            vertexes: vec![],
+            indexes: vec![],
+        }
+    }
+
+    fn len(&self) -> u32 {
+        self.indexes.len() as u32
+    }
+
+    fn append(&mut self, other: &mut Mesh) {
+        other.indexes.iter_mut().for_each(|i| *i += self.len());
+        self.vertexes.append(&mut other.vertexes);
+        self.indexes.append(&mut other.indexes);
+    }
+
+    fn transform(&mut self, m: Mat4) {
+        self.vertexes.iter_mut().for_each(|v| {
+            v.position = m * v.position;
+            v.normal = m * v.normal
+        });
+    }
+}
+
+fn cube_mesh() -> Mesh {
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    let mut plus_z_face = {
+        let vertex_positions = [
+            [-0.5, -0.5, 0.0, 1.0],
+            [0.5, -0.5, 0.0, 1.0],
+            [-0.5, 0.5, 0.0, 1.0],
+            [0.5, 0.5, 0.0, 1.0],
+        ];
+        let vertex_colors = [
+            [1.0, 0.0, 0.0, 1.0],
+            [0.25, 0.75, 0.0, 1.0],
+            [0.0, 0.5, 0.5, 1.0],
+            [0.25, 0.0, 0.75, 1.0],
+        ];
+        let vertex_normals = [
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+        ];
+        let vertexes: Vec<Vertex> =
+            itertools::izip!(vertex_positions, vertex_colors, vertex_normals)
+                .map(|(pos_arr, col_arr, norm_arr)| Vertex {
+                    position: Vec4::from_array(pos_arr),
+                    color: Vec4::from_array(col_arr),
+                    normal: Vec4::from_array(norm_arr),
+                })
+                .collect();
+
+        let indexes = vec![0, 1, 3, 3, 2, 0];
+
+        Mesh { vertexes, indexes }
+    };
+    plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
+
+    // relative to the +Z face
+    let transformations = [
+        Mat4::IDENTITY,
+        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), PI),
+        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
+        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
+        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
+        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
+    ];
+
+    let mut cube = Mesh::new_empty();
+    for transform in transformations {
+        let mut next_face = plus_z_face.clone();
+        next_face.transform(transform);
+        cube.append(&mut next_face);
+    }
+
+    cube
 }
