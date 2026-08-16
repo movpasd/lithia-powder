@@ -34,7 +34,6 @@ fn main() {
     let vertex_attributes: [VertexAttribute; _];
     let vertex_size: u32;
     let vertex_data: [[f32; _]; _];
-    let index_size: u32;
     let index_data: [u32; _];
     {
         let vertex_f32_size = 3 + 3;
@@ -46,7 +45,6 @@ fn main() {
             [-0.5, 0.5, 0.0, 0.25, 0.00, 0.75],
         ];
 
-        index_size = size_of::<u32>() as u32;
         index_data = [0, 1, 2, 2, 3, 0];
         vertex_attributes = [
             VertexAttribute::new()
@@ -71,14 +69,10 @@ fn main() {
         .with_size(vertex_size * vertex_data.len() as u32)
         .build()
         .unwrap();
-    let vertex_buffer_desc = VertexBufferDescription::new()
-        .with_slot(0)
-        .with_pitch(vertex_size)
-        .with_input_rate(VertexInputRate::Vertex);
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(index_size * index_data.len() as u32)
+        .with_size((size_of::<u32>() * index_data.len()) as u32)
         .build()
         .unwrap();
     {
@@ -187,7 +181,10 @@ fn main() {
             .with_fragment_shader(&fragment_shader)
             .with_vertex_input_state(
                 VertexInputState::new()
-                    .with_vertex_buffer_descriptions(&[vertex_buffer_desc])
+                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
+                        .with_slot(0)
+                        .with_pitch(vertex_size)
+                        .with_input_rate(VertexInputRate::Vertex)])
                     .with_vertex_attributes(&vertex_attributes),
             )
             .with_primitive_type(PrimitiveType::TriangleList)
