@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use glam::{vec3, Mat4};
+use glam::{vec3, Mat4, Vec3};
 use sdl3::{
     self,
     gpu::{
@@ -8,7 +8,7 @@ use sdl3::{
         CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
         GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
         ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexInputState,
+        VertexElementFormat, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -20,7 +20,7 @@ fn main() {
 
     let video_sys = sdl.video().unwrap();
     let window = video_sys
-        .window("lithia-powder", 640, 480)
+        .window("lithia-powder", 980, 640)
         .position_centered()
         .resizable()
         .build()
@@ -235,7 +235,7 @@ fn main() {
             use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
 
             let (width, height) = window.size();
-            let persp = perspective(70.0, width as f32 / height as f32, 0.1, 200.0);
+            let persp = perspective(70.0f32.to_radians(), width as f32 / height as f32, 0.1, 200.0);
             let look = look_at_mat4(
                 vec3(3.0, 2.0, 1.0),
                 vec3(0.0, 0.0, 0.0),
