@@ -8,7 +8,7 @@ use sdl3::{
         CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
         GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
         ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexElementFormat, VertexInputState,
+        VertexElementFormat, VertexInputRate, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -16,6 +16,7 @@ use sdl3::{
 };
 
 fn main() {
+    // set up SDL
     let sdl = sdl3::init().unwrap();
 
     let video_sys = sdl.video().unwrap();
@@ -29,6 +30,7 @@ fn main() {
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
+    // prepare models
     const VERTEX_F32_SIZE: u32 = 3 + 3;
     const VERTEX_SIZE: u32 = size_of::<f32>() as u32 * VERTEX_F32_SIZE;
     const VERTEX_COUNT: u32 = 4;
@@ -40,13 +42,6 @@ fn main() {
          0.5,  0.5,  0.0, 0.00, 0.50, 0.50,
         -0.5,  0.5,  0.0, 0.25, 0.00, 0.75,
     ];
-    let vertex_buffer = device
-        .create_buffer()
-        .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(VERTEX_SIZE * VERTEX_COUNT)
-        .build()
-        .unwrap();
-
     const INDEX_SIZE: u32 = size_of::<u32>() as u32;
     const INDEX_COUNT: u32 = 6;
     #[rustfmt::skip]
@@ -54,14 +49,38 @@ fn main() {
         0, 1, 2,
         2, 3, 0,
     ];
+    let vertex_attributes = [
+        VertexAttribute::new()
+            .with_buffer_slot(0)
+            // va_position
+            .with_location(0)
+            .with_offset(0)
+            .with_format(VertexElementFormat::Float3),
+        VertexAttribute::new()
+            .with_buffer_slot(0)
+            // va_color
+            .with_location(1)
+            .with_offset(3 * size_of::<f32>() as u32)
+            .with_format(VertexElementFormat::Float3),
+    ];
+
+    // upload data to GPU geometry buffers
+    let vertex_buffer = device
+        .create_buffer()
+        .with_usage(BufferUsageFlags::VERTEX)
+        .with_size(VERTEX_SIZE * VERTEX_COUNT)
+        .build()
+        .unwrap();
+    let vertex_buffer_desc = VertexBufferDescription::new()
+        .with_slot(0)
+        .with_pitch(VERTEX_SIZE)
+        .with_input_rate(VertexInputRate::Vertex);
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
         .with_size(INDEX_SIZE * INDEX_COUNT)
         .build()
         .unwrap();
-
-    // upload data to geometry buffers
     {
         let vertex_transfer_buf = device
             .create_transfer_buffer()
@@ -160,7 +179,7 @@ fn main() {
     let pipeline: GraphicsPipeline;
     let texture_format = device.get_swapchain_texture_format(&window);
     {
-        use sdl3::gpu::{PrimitiveType, VertexElementFormat, VertexInputRate};
+        use sdl3::gpu::PrimitiveType;
 
         pipeline = device
             .create_graphics_pipeline()
@@ -168,24 +187,8 @@ fn main() {
             .with_fragment_shader(&fragment_shader)
             .with_vertex_input_state(
                 VertexInputState::new()
-                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                        .with_slot(0)
-                        .with_pitch(VERTEX_SIZE)
-                        .with_input_rate(VertexInputRate::Vertex)])
-                    .with_vertex_attributes(&[
-                        VertexAttribute::new()
-                            .with_buffer_slot(0)
-                            // va_position
-                            .with_location(0)
-                            .with_offset(0)
-                            .with_format(VertexElementFormat::Float3),
-                        VertexAttribute::new()
-                            .with_buffer_slot(0)
-                            // va_color
-                            .with_location(1)
-                            .with_offset(3 * size_of::<f32>() as u32)
-                            .with_format(VertexElementFormat::Float3),
-                    ]),
+                    .with_vertex_buffer_descriptions(&[vertex_buffer_desc])
+                    .with_vertex_attributes(&vertex_attributes),
             )
             .with_primitive_type(PrimitiveType::TriangleList)
             .with_rasterizer_state(
@@ -208,6 +211,7 @@ fn main() {
             .unwrap();
     }
 
+    // event loop
     let mut event_pump = sdl.event_pump().unwrap();
     'main_loop: loop {
         for event in event_pump.poll_iter() {
