@@ -1,21 +1,25 @@
 #version 460 core
 #pragma shader_stage(vertex)
 
-layout(std140, set = 1, binding = 0) uniform U_Camera {
+layout(std140, set = 1, binding = 0) uniform U_Transforms {
     mat4 projection;
+    mat4 pose;
 };
 
-layout(location = 0) in vec3 va_position;
-layout(location = 1) in vec3 va_color;
+layout(location = 0) in vec4 va_position;
+layout(location = 1) in vec4 va_color;
 layout(location = 2) in vec4 va_normal;
 
 layout(location = 0) out vec4 so_color;
 layout(location = 1) out float so_lighting;
 
 void main() {
-    gl_Position = projection * vec4(va_position, 1.0);
-    so_color = vec4(va_color, 1.0);
+    vec4 worldPos = pose * va_position;
+    vec4 worldNormal = pose * va_normal;
+
+    gl_Position = projection * worldPos;
+    so_color = va_color;
 
     vec3 lightDir = normalize(vec3(2.0, -3.0, 8.0));
-    so_lighting = (1.0 + dot(normalize(va_normal.xyz), lightDir)) / 2.0;
+    so_lighting = (1.0 + dot(normalize(worldNormal.xyz), lightDir)) / 2.0;
 }

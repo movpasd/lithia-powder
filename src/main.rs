@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use glam::{vec3, Mat4, Vec4};
+use std::{f32::consts::PI, time::Instant};
+
+use glam::{vec3, EulerRot, Mat4, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -162,13 +164,13 @@ fn main() {
             .with_rasterizer_state(
                 RasterizerState::new()
                     .with_fill_mode(FillMode::Fill)
-                    .with_cull_mode(CullMode::None)
+                    .with_cull_mode(CullMode::Back)
                     .with_front_face(FrontFace::CounterClockwise),
             )
             .with_depth_stencil_state(
                 DepthStencilState::new()
                     .with_enable_depth_test(true)
-                    .with_compare_op(CompareOp::Greater),
+                    .with_compare_op(CompareOp::Less),
             )
             .with_target_info(
                 GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
@@ -178,6 +180,8 @@ fn main() {
             .build()
             .unwrap();
     }
+
+    let start_time = Instant::now();
 
     // event loop
     let mut event_pump = sdl.event_pump().unwrap();
@@ -200,25 +204,41 @@ fn main() {
         }
 
         // logic
-        let projection;
+        let unif_transform_data: [Mat4; 2];
         {
-            // camera stuff
-            // SDL_GPU uses DirectX-like convention
-            use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
+            let elapsed_time = Instant::now() - start_time;
 
-            let (width, height) = window.size();
-            let persp = perspective(
-                70.0f32.to_radians(),
-                width as f32 / height as f32,
-                0.1,
-                200.0,
-            );
-            let look = look_at_mat4(
-                vec3(3.0, 2.0, 1.0),
-                vec3(0.0, 0.0, 0.0),
-                vec3(0.0, 0.0, 1.0),
-            );
-            projection = persp * look;
+            // camera stuff
+            let projection;
+            {
+                // SDL_GPU uses DirectX-like convention
+                use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
+
+                let (width, height) = window.size();
+                let persp = perspective(
+                    70.0f32.to_radians(),
+                    width as f32 / height as f32,
+                    0.1,
+                    200.0,
+                );
+                let look = look_at_mat4(
+                    vec3(3.0, 2.0, 1.0),
+                    vec3(0.0, 0.0, 0.0),
+                    vec3(0.0, 0.0, 1.0),
+                );
+                projection = persp * look;
+            }
+
+            // cube movement
+            let pose;
+            {
+                let yaw = 8.0 * PI * (elapsed_time.as_secs_f32() * 0.01) % (2.0 * PI);
+                let pitch = 2.0 * PI * f32::sin(elapsed_time.as_secs_f32() * 0.05);
+                let roll = 0.1 * PI * f32::sin(elapsed_time.as_secs_f32() * 0.4);
+                pose = Mat4::from_euler(EulerRot::ZYX, yaw, pitch, roll);
+            }
+
+            unif_transform_data = [projection, pose];
         }
 
         // render
@@ -242,7 +262,7 @@ fn main() {
                     &BufferBinding::new().with_buffer(&index_buffer),
                     IndexElementSize::_32BIT,
                 );
-                cbuf.push_vertex_uniform_data(0, &projection);
+                cbuf.push_vertex_uniform_data(0, &unif_transform_data);
                 render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
             }
             device.end_render_pass(render_pass);
@@ -378,7 +398,10 @@ impl Mesh {
         self.indexes.len() as u32
     }
     fn append(&mut self, other: &mut Mesh) {
-        other.indexes.iter_mut().for_each(|i| *i += self.len());
+        other
+            .indexes
+            .iter_mut()
+            .for_each(|i| *i += self.vertexes.len() as u32);
         self.vertexes.append(&mut other.vertexes);
         self.indexes.append(&mut other.indexes);
     }
@@ -436,19 +459,32 @@ fn cube_mesh() -> Mesh {
     // relative to the +Z face
     let transformations = [
         Mat4::IDENTITY,
-        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), PI),
+        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), PI),
+        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
+        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), -FRAC_PI_2),
         Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
         Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
     ];
 
     let mut cube = Mesh::new_empty();
     for transform in transformations {
         let mut next_face = plus_z_face.clone();
         next_face.transform(transform);
+
+        println!("{:?}", next_face.indexes);
+        println!(
+            "{:.0?}",
+            next_face
+                .vertexes
+                .iter()
+                .map(|v| v.position * 2.0)
+                .collect::<Vec<_>>()
+        );
+
         cube.append(&mut next_face);
     }
+
+    println!("{:?}", cube.indexes);
 
     cube
 }

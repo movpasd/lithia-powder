@@ -7,6 +7,14 @@ layout(location = 1) in float si_lighting;
 layout(location = 0) out vec4 ca_color;
 
 void main() {
-    float lightingFactor = pow(si_lighting, 0.5);
+    float fullyUnlitFactor = 0.7;
+    float fullyUnlitThreshold = 0.4;
+    float fullyLitFactor = 1.5;
+    float fullyLitThreshold = 1.0;
+
+    float slope = (fullyLitFactor - fullyUnlitFactor) / (fullyLitThreshold - fullyUnlitThreshold);
+    float lightingFactorUnclamped = fullyUnlitFactor + (si_lighting - fullyUnlitThreshold) * slope;
+    float lightingFactor = clamp(lightingFactorUnclamped, fullyUnlitFactor, fullyLitFactor);
+
     ca_color = si_color * lightingFactor;
 }
