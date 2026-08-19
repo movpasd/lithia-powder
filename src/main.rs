@@ -55,7 +55,7 @@ fn main() {
             .build()
             .unwrap();
         vertex_transfer_buf
-            .map(&device, false)
+            .map(&device, true)
             .mem_mut()
             .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.vertexes));
 
@@ -65,7 +65,7 @@ fn main() {
             .build()
             .unwrap();
         index_transfer_buf
-            .map(&device, false)
+            .map(&device, true)
             .mem_mut()
             .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.indexes));
 
@@ -77,14 +77,14 @@ fn main() {
                 BufferRegion::new()
                     .with_buffer(&vertex_buffer)
                     .with_size(vertex_buffer.len()),
-                false,
+                true,
             );
             copy_pass.upload_to_gpu_buffer(
                 TransferBufferLocation::new().with_transfer_buffer(&index_transfer_buf),
                 BufferRegion::new()
                     .with_buffer(&index_buffer)
                     .with_size(index_buffer.len()),
-                false,
+                true,
             );
             device.end_copy_pass(copy_pass);
         }
@@ -277,48 +277,6 @@ fn main() {
     println!("bye bye!");
 }
 
-/// Downloads the content of a buffer for debugging purposes
-///
-/// Runs a whole buffer pass and blocks.
-fn download_buffer_content<T: std::fmt::Debug + std::marker::Copy>(
-    device: &sdl3::gpu::Device,
-    vertex_buffer: &sdl3::gpu::Buffer,
-) -> Vec<T> {
-    let download_buffer = device
-        .create_transfer_buffer()
-        .with_size(vertex_buffer.len())
-        .build()
-        .unwrap();
-    let vertex_data_download = device.acquire_command_buffer().unwrap();
-    {
-        let copy_pass = device.begin_copy_pass(&vertex_data_download).unwrap();
-        unsafe {
-            use sdl3::sys::gpu::{
-                SDL_DownloadFromGPUBuffer, SDL_GPUBufferRegion, SDL_GPUTransferBufferLocation,
-            };
-            SDL_DownloadFromGPUBuffer(
-                copy_pass.raw(),
-                &SDL_GPUBufferRegion {
-                    buffer: vertex_buffer.raw(),
-                    offset: 0,
-                    size: vertex_buffer.len(),
-                },
-                &SDL_GPUTransferBufferLocation {
-                    transfer_buffer: download_buffer.raw(),
-                    offset: 0,
-                },
-            );
-        }
-        device.end_copy_pass(copy_pass);
-    }
-    let vertex_data_download_fence = vertex_data_download
-        .submit_and_acquire_fence(device)
-        .unwrap();
-    while !vertex_data_download_fence.query(device) {}
-
-    let content = download_buffer.map::<T>(device, false).mem().to_owned();
-    content
-}
 
 fn mat4_as_glsl(mat: Mat4) -> String {
     let (x, y, z, w) = (mat.x_axis, mat.y_axis, mat.z_axis, mat.w_axis);
