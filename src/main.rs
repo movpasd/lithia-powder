@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::{f32::consts::PI, time::Instant};
+use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, EulerRot, Mat4, Vec4};
+use glam::{vec3, Mat4, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -32,8 +32,10 @@ fn main() {
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
-    // prepare models
+    // logic data
     let mesh = cube_mesh();
+    let mut camera_projection: Mat4;
+    let mut pose: Mat4;
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
@@ -204,12 +206,10 @@ fn main() {
         }
 
         // logic
-        let unif_transform_data: [Mat4; 2];
         {
-            let elapsed_time = Instant::now() - start_time;
+            let elapsed_time_secs = (Instant::now() - start_time).as_secs_f32();
 
             // camera stuff
-            let projection;
             {
                 // SDL_GPU uses DirectX-like convention
                 use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
@@ -221,24 +221,33 @@ fn main() {
                     0.1,
                     200.0,
                 );
+                let orbit_period = 60.0;
+                let orbit_distance = 5.0;
+                let orbit_angle = TAU * elapsed_time_secs / orbit_period;
                 let look = look_at_mat4(
-                    vec3(3.0, 2.0, 1.0),
+                    vec3(
+                        orbit_distance * orbit_angle.cos(),
+                        orbit_distance * orbit_angle.sin(),
+                        3.0,
+                    ),
                     vec3(0.0, 0.0, 0.0),
                     vec3(0.0, 0.0, 1.0),
                 );
-                projection = persp * look;
+                camera_projection = persp * look;
             }
 
             // cube movement
-            let pose;
             {
-                let yaw = 8.0 * PI * (elapsed_time.as_secs_f32() * 0.01) % (2.0 * PI);
-                let pitch = 2.0 * PI * f32::sin(elapsed_time.as_secs_f32() * 0.05);
-                let roll = 0.1 * PI * f32::sin(elapsed_time.as_secs_f32() * 0.4);
-                pose = Mat4::from_euler(EulerRot::ZYX, yaw, pitch, roll);
-            }
+                let wave_period = 3.0;
+                let wave_ampl = 0.2;
+                let wave_height = wave_ampl
+                    * f32::sin(TAU * elapsed_time_secs / wave_period)
+                        .powf(5.0)
+                        .abs();
+                let wave_translate = Mat4::from_translation(vec3(0.0, 0.0, wave_height));
 
-            unif_transform_data = [projection, pose];
+                pose = wave_translate;
+            }
         }
 
         // render
@@ -262,7 +271,10 @@ fn main() {
                     &BufferBinding::new().with_buffer(&index_buffer),
                     IndexElementSize::_32BIT,
                 );
+
+                let unif_transform_data = [camera_projection, pose];
                 cbuf.push_vertex_uniform_data(0, &unif_transform_data);
+
                 render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
             }
             device.end_render_pass(render_pass);
@@ -276,7 +288,6 @@ fn main() {
 
     println!("bye bye!");
 }
-
 
 fn mat4_as_glsl(mat: Mat4) -> String {
     let (x, y, z, w) = (mat.x_axis, mat.y_axis, mat.z_axis, mat.w_axis);
