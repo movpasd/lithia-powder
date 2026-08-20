@@ -7,7 +7,7 @@ use sdl3::{
     self,
     gpu::{
         BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
-        CompareOp, CullMode, DepthStencilState, FillMode, FrontFace, GraphicsPipeline,
+        CompareOp, CullMode, DepthStencilState, Device, FillMode, FrontFace, GraphicsPipeline,
         GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
         ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
         VertexElementFormat, VertexInputRate, VertexInputState,
@@ -15,12 +15,13 @@ use sdl3::{
     keyboard::Keycode,
     pixels::Color,
     sys::gpu::SDL_GPULoadOp,
+    video::Window,
 };
 
 fn main() {
-    // set up SDL
     let sdl = sdl3::init().unwrap();
 
+    // window setup
     let video_sys = sdl.video().unwrap();
     let window = video_sys
         .window("lithia-powder", 980, 640)
@@ -29,6 +30,7 @@ fn main() {
         .build()
         .unwrap();
 
+    // GPU setup
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
 
@@ -94,98 +96,11 @@ fn main() {
         while !data_upload_fence.query(&device) {}
     }
 
-    // load and render shaders
-    let vertex_shader: Shader;
-    let fragment_shader: Shader;
-    {
-        use shaderc::ShaderKind;
-
-        let compiler = shaderc::Compiler::new().unwrap();
-
-        let vertex_source = include_str!("shaders/vertex.glsl");
-        let vertex_ir = compiler
-            .compile_into_spirv(
-                vertex_source,
-                ShaderKind::Vertex,
-                "shaders/vertex.glsl",
-                "main",
-                None,
-            )
-            .unwrap();
-        vertex_shader = device
-            .create_shader()
-            .with_code(
-                ShaderFormat::SPIRV,
-                vertex_ir.as_binary_u8(),
-                ShaderStage::Vertex,
-            )
-            .with_uniform_buffers(1)
-            .build()
-            .unwrap();
-
-        let fragment_source = include_str!("shaders/fragment.glsl");
-        let fragment_ir = compiler
-            .compile_into_spirv(
-                fragment_source,
-                ShaderKind::Fragment,
-                "shaders/fragment.glsl",
-                "main",
-                None,
-            )
-            .unwrap();
-        fragment_shader = device
-            .create_shader()
-            .with_code(
-                ShaderFormat::SPIRV,
-                fragment_ir.as_binary_u8(),
-                ShaderStage::Vertex,
-            )
-            .build()
-            .unwrap();
-    }
-
     // set up rendering pipeline
-    let pipeline: GraphicsPipeline;
-    let texture_format = device.get_swapchain_texture_format(&window);
-    {
-        use sdl3::gpu::PrimitiveType;
-
-        pipeline = device
-            .create_graphics_pipeline()
-            .with_vertex_shader(&vertex_shader)
-            .with_fragment_shader(&fragment_shader)
-            .with_vertex_input_state(
-                VertexInputState::new()
-                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                        .with_slot(0)
-                        .with_pitch(size_of::<Vertex>() as u32)
-                        .with_input_rate(VertexInputRate::Vertex)])
-                    .with_vertex_attributes(&Vertex::get_attributes(0, 0)),
-            )
-            .with_primitive_type(PrimitiveType::TriangleList)
-            .with_rasterizer_state(
-                RasterizerState::new()
-                    .with_fill_mode(FillMode::Fill)
-                    .with_cull_mode(CullMode::Back)
-                    .with_front_face(FrontFace::CounterClockwise),
-            )
-            .with_depth_stencil_state(
-                DepthStencilState::new()
-                    .with_enable_depth_test(true)
-                    .with_compare_op(CompareOp::Less),
-            )
-            .with_target_info(
-                GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
-                    ColorTargetDescription::new().with_format(texture_format), // think not required: .with_blend_state(?)
-                ]),
-            )
-            .build()
-            .unwrap();
-    }
-
-    let start_time = Instant::now();
+    let pipeline = prepare_render_pipeline(&device, &window);
 
     // event loop
+    let start_time = Instant::now();
     let mut event_pump = sdl.event_pump().unwrap();
     'main_loop: loop {
         for event in event_pump.poll_iter() {
@@ -289,6 +204,98 @@ fn main() {
     println!("bye bye!");
 }
 
+// -- rendering --
+
+fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline {
+    use sdl3::gpu::PrimitiveType;
+
+    // load and compile shaders
+    let vertex_shader: Shader;
+    let fragment_shader: Shader;
+    {
+        use shaderc::ShaderKind;
+
+        let compiler = shaderc::Compiler::new().unwrap();
+
+        let vertex_source = include_str!("shaders/vertex.glsl");
+        let vertex_ir = compiler
+            .compile_into_spirv(
+                vertex_source,
+                ShaderKind::Vertex,
+                "shaders/vertex.glsl",
+                "main",
+                None,
+            )
+            .unwrap();
+        vertex_shader = device
+            .create_shader()
+            .with_code(
+                ShaderFormat::SPIRV,
+                vertex_ir.as_binary_u8(),
+                ShaderStage::Vertex,
+            )
+            .with_uniform_buffers(1)
+            .build()
+            .unwrap();
+
+        let fragment_source = include_str!("shaders/fragment.glsl");
+        let fragment_ir = compiler
+            .compile_into_spirv(
+                fragment_source,
+                ShaderKind::Fragment,
+                "shaders/fragment.glsl",
+                "main",
+                None,
+            )
+            .unwrap();
+        fragment_shader = device
+            .create_shader()
+            .with_code(
+                ShaderFormat::SPIRV,
+                fragment_ir.as_binary_u8(),
+                ShaderStage::Vertex,
+            )
+            .build()
+            .unwrap();
+    }
+
+    let texture_format = device.get_swapchain_texture_format(window);
+
+    device
+        .create_graphics_pipeline()
+        .with_vertex_shader(&vertex_shader)
+        .with_fragment_shader(&fragment_shader)
+        .with_vertex_input_state(
+            VertexInputState::new()
+                .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
+                    .with_slot(0)
+                    .with_pitch(size_of::<Vertex>() as u32)
+                    .with_input_rate(VertexInputRate::Vertex)])
+                .with_vertex_attributes(&Vertex::get_attributes(0, 0)),
+        )
+        .with_primitive_type(PrimitiveType::TriangleList)
+        .with_rasterizer_state(
+            RasterizerState::new()
+                .with_fill_mode(FillMode::Fill)
+                .with_cull_mode(CullMode::Back)
+                .with_front_face(FrontFace::CounterClockwise),
+        )
+        .with_depth_stencil_state(
+            DepthStencilState::new()
+                .with_enable_depth_test(true)
+                .with_compare_op(CompareOp::Less),
+        )
+        .with_target_info(
+            GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
+                ColorTargetDescription::new().with_format(texture_format),
+            ]),
+        )
+        .build()
+        .unwrap()
+}
+
+// -- utilities --
+
 fn mat4_as_glsl(mat: Mat4) -> String {
     let (x, y, z, w) = (mat.x_axis, mat.y_axis, mat.z_axis, mat.w_axis);
     #[rustfmt::skip]
@@ -306,6 +313,8 @@ fn mat4_as_glsl(mat: Mat4) -> String {
         w.x, w.y, w.z, w.w,
     );
 }
+
+// -- vertex and mesh stuff --
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
