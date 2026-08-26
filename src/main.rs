@@ -151,17 +151,12 @@ fn main() {
                 camera_projection = persp * look;
             }
 
-            // cube movement
+            // cube animation
             {
-                let wave_period = 3.0;
-                let wave_ampl = 0.2;
-                let wave_height = wave_ampl
-                    * f32::sin(TAU * elapsed_time_secs / wave_period)
-                        .powf(5.0)
-                        .abs();
-                let wave_translate = Mat4::from_translation(vec3(0.0, 0.0, wave_height));
+                let trans = Mat4::from_translation(vec3(0.0, 0.0, anim::z(1.0, elapsed_time_secs)));
+                let rot = Mat4::from_quat(anim::rot(elapsed_time_secs));
 
-                pose = wave_translate;
+                pose = rot * trans;
             }
         }
 
@@ -465,4 +460,112 @@ fn cube_mesh() -> Mesh {
     println!("{:?}", cube.indexes);
 
     cube
+}
+
+// -- cube animation --
+
+mod anim {
+    use std::{
+        f32::consts::PI,
+        ops::{Add, Mul},
+    };
+
+    use glam::Quat;
+
+    const WAIT_TIME: f32 = 1.5;
+    const MOVE_TIME: f32 = 0.75;
+    const SPIN_TIME: f32 = 0.5;
+    const SPIN_OVERLAP_TIME: f32 = 0.5;
+
+    const ANIM_TIME: f32 = WAIT_TIME + MOVE_TIME + SPIN_TIME + MOVE_TIME;
+    const KEYFRAME_TIMES: [f32; 4] = [
+        0.0,
+        WAIT_TIME,
+        WAIT_TIME + MOVE_TIME,
+        WAIT_TIME + MOVE_TIME + SPIN_TIME,
+    ];
+
+    pub fn z(h: f32, t: f32) -> f32 {
+        let t = t % ANIM_TIME;
+
+        #[allow(unused_variables)]
+        if (KEYFRAME_TIMES[0]..KEYFRAME_TIMES[1]).contains(&t) {
+            // wait
+            let subt = t - KEYFRAME_TIMES[0];
+            let wlen = KEYFRAME_TIMES[1] - KEYFRAME_TIMES[0];
+            0.0
+        } else if (KEYFRAME_TIMES[1]..KEYFRAME_TIMES[2]).contains(&t) {
+            // move up
+            let subt = t - KEYFRAME_TIMES[1];
+            let wlen = KEYFRAME_TIMES[2] - KEYFRAME_TIMES[1];
+            lerp(0.0, h, smooth(subt / wlen))
+        } else if (KEYFRAME_TIMES[2]..KEYFRAME_TIMES[3]).contains(&t) {
+            // spin
+            let subt = t - KEYFRAME_TIMES[2];
+            let wlen = KEYFRAME_TIMES[3] - KEYFRAME_TIMES[2];
+            h
+        } else if (KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
+            // move down
+            let subt = t - KEYFRAME_TIMES[3];
+            let wlen = ANIM_TIME - KEYFRAME_TIMES[3];
+            lerp(h, 0.0, smooth(subt / wlen))
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn rot(t: f32) -> Quat {
+        let t = t % ANIM_TIME;
+
+        let mut rot_keyframe_times = KEYFRAME_TIMES;
+        rot_keyframe_times[2] -= SPIN_OVERLAP_TIME;
+        rot_keyframe_times[3] += SPIN_OVERLAP_TIME;
+
+        #[allow(unused_variables)]
+        let angle = if (rot_keyframe_times[0]..rot_keyframe_times[1]).contains(&t) {
+            // wait
+            let subt = t - rot_keyframe_times[0];
+            let wlen = rot_keyframe_times[1] - rot_keyframe_times[0];
+            0.0
+        } else if (rot_keyframe_times[1]..rot_keyframe_times[2]).contains(&t) {
+            // move up
+            let subt = t - rot_keyframe_times[1];
+            let wlen = rot_keyframe_times[2] - rot_keyframe_times[1];
+            0.0
+        } else if (rot_keyframe_times[2]..rot_keyframe_times[3]).contains(&t) {
+            // spin
+            let subt = t - rot_keyframe_times[2];
+            let wlen = rot_keyframe_times[3] - rot_keyframe_times[2];
+            lerp(0.0, 2.0 * PI * 2.0, smooth(subt / wlen))
+        } else if (rot_keyframe_times[3]..ANIM_TIME).contains(&t) {
+            // move down
+            let subt = t - rot_keyframe_times[3];
+            let wlen = ANIM_TIME - rot_keyframe_times[3];
+            0.0
+        } else {
+            unreachable!()
+        };
+
+        Quat::from_rotation_z(angle)
+    }
+
+    fn lerp<T: Mul<f32, Output = T> + Add<T, Output = T>>(a: T, b: T, x: f32) -> T {
+        if x < 0.0 {
+            a
+        } else if 1.0 <= x {
+            b
+        } else {
+            a * (1.0 - x) + b * x
+        }
+    }
+
+    fn smooth(x: f32) -> f32 {
+        if x < 0.0 {
+            0.0
+        } else if 1.0 <= x {
+            1.0
+        } else {
+            x * x * (3.0 - 2.0 * x)
+        }
+    }
 }
