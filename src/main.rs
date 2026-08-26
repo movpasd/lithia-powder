@@ -196,8 +196,6 @@ fn main() {
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
     }
-
-    println!("bye bye!");
 }
 
 // -- rendering --
@@ -446,20 +444,8 @@ fn cube_mesh() -> Mesh {
         let mut next_face = plus_z_face.clone();
         next_face.transform(transform);
 
-        println!("{:?}", next_face.indexes);
-        println!(
-            "{:.0?}",
-            next_face
-                .vertexes
-                .iter()
-                .map(|v| v.position * 2.0)
-                .collect::<Vec<_>>()
-        );
-
         cube.append(&mut next_face);
     }
-
-    println!("{:?}", cube.indexes);
 
     cube
 }
