@@ -36,7 +36,8 @@ fn main() {
 
     // logic data
     let mesh = cube_mesh();
-    let mut camera_projection: Mat4;
+    let mut view: Mat4;
+    let mut persp: Mat4;
     let mut pose: anim::Pose;
 
     // upload data to GPU geometry buffers
@@ -130,25 +131,24 @@ fn main() {
                 use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
 
                 let (width, height) = window.size();
-                let persp = perspective(
+                persp = perspective(
                     70.0f32.to_radians(),
                     width as f32 / height as f32,
                     0.1,
                     200.0,
                 );
                 let orbit_period = 60.0;
-                let orbit_distance = 5.0;
+                let orbit_distance = 3.214;
                 let orbit_angle = TAU * elapsed_time_secs / orbit_period;
-                let look = look_at_mat4(
+                view = look_at_mat4(
                     vec3(
                         orbit_distance * orbit_angle.cos(),
                         orbit_distance * orbit_angle.sin(),
-                        3.0,
+                        2.21,
                     ),
-                    vec3(0.0, 0.0, 0.0),
+                    vec3(0.0, 0.0, 0.8),
                     vec3(0.0, 0.0, 1.0),
                 );
-                camera_projection = persp * look;
             }
 
             // cube animation
@@ -178,7 +178,8 @@ fn main() {
                 );
 
                 let unif_transform_data = [
-                    camera_projection,
+                    view,
+                    persp,
                     Mat4::from_translation(pose.pos),
                     Mat4::from_quat(pose.rot),
                 ];

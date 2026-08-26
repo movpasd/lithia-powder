@@ -7,9 +7,9 @@ layout(location = 1) in float si_lighting;
 layout(location = 0) out vec4 ca_color;
 
 void main() {
-    float fullyUnlitFactor = 0.7;
+    float fullyUnlitFactor = 0.6;
     float fullyUnlitThreshold = 0.4;
-    float fullyLitFactor = 1.2;
+    float fullyLitFactor = 1.3;
     float fullyLitThreshold = 1.0;
 
     float scaledLightingFactor = pow(si_lighting, 0.85);

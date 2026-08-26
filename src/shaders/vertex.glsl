@@ -2,7 +2,8 @@
 #pragma shader_stage(vertex)
 
 layout(std140, set = 1, binding = 0) uniform U_Transforms {
-    mat4 projection;
+    mat4 view;
+    mat4 persp;
     mat4 translation;
     mat4 rotation;
 };
@@ -18,9 +19,11 @@ void main() {
     vec4 worldPos = rotation * translation * va_position;
     vec4 worldNormal = rotation * va_normal;
 
-    gl_Position = projection * worldPos;
+    vec4 viewPos = view * worldPos;
+    gl_Position = persp * viewPos;
     so_color = va_color;
 
     vec3 lightDir = normalize(vec3(2.0, -3.0, 8.0));
-    so_lighting = (1.0 + dot(normalize(worldNormal.xyz), lightDir)) / 2.0;
+    float lightDot = dot(normalize(worldNormal.xyz), lightDir);
+    so_lighting = (1.0 + lightDot) / 2.0;
 }
