@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::{f32::consts::TAU, time::Instant};
+use std::{f32::consts::TAU, ffi::CStr, time::Instant};
 
-use glam::{vec3, Mat4, Vec3, Vec4};
+use glam::{vec3, Mat4, Quat, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -17,6 +17,8 @@ use sdl3::{
     sys::gpu::SDL_GPULoadOp,
     video::Window,
 };
+
+const EMPTY_C_STRING: &CStr = c"";
 
 fn main() {
     let sdl = sdl3::init().unwrap();
@@ -33,25 +35,25 @@ fn main() {
     // GPU setup
     let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
     device = device.with_window(&window).unwrap();
+    unsafe {
+        let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(device.raw());
+        let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(properties, sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING
+            , EMPTY_C_STRING.as_ptr()));
+        println!("{property_value:?}");
+    }
 
     // logic data
-    let meshes: Vec<Mesh> = vec![
-        cube_mesh(),
-        {
-            let mut c = cube_mesh();
-            c.transform(Mat4::from_translation(vec3(3.0, 0.0, 0.0)));
-            c
-        },
-        {
-            let mut c = cube_mesh();
-            c.transform(Mat4::from_translation(vec3(1.5, 3.0, 0.0)));
-            c
-        },
-    ];
+    let meshes: Vec<Mesh> = vec![cube_mesh(), cube_mesh(), cube_mesh()];
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
-        anim::Pose::default(),
-        anim::Pose::default(),
+        anim::Pose {
+            pos: vec3(3.0, 0.0, 0.0),
+            rot: Quat::default(),
+        },
+        anim::Pose {
+            pos: vec3(1.5, 3.0, 0.0),
+            rot: Quat::default(),
+        },
     ];
     assert!(meshes.len() == poses.len());
 
@@ -72,28 +74,26 @@ fn main() {
         .with_size(1_024 * 1_024)
         .build()
         .unwrap();
-    let vbuf_entries: Vec<(u32, u32)>; // (offset in bytes, size in bytes)
-    let ibuf_entries: Vec<(u32, u32)>; // idem
-    (vbuf_entries, ibuf_entries) = {
+     
+    let buffer_entries: Vec<(u32, u32, i32)> /* vec[(first_index, num_indices, vertex_offset)] */ = { 
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
-        let mut vbuf_entries = vec![];
-        let mut ibuf_entries = vec![];
-        let mut next_vbuf_offset: u32 = 0;
-        let mut next_ibuf_offset: u32 = 0;
+        let mut buffer_entries = vec![];
+        let mut next_first_index: u32 = 0;
+        let mut next_vertex_offset: i32 = 0;
         for mesh in &meshes {
             let vbytes = bytemuck::cast_slice::<_, u8>(&mesh.vertexes);
-            let vsize = vbytes.len() as u32;
-            vbuf_entries.push((next_vbuf_offset, vsize));
             vbuf_data.extend_from_slice(vbytes);
-            next_vbuf_offset += vsize;
-
             let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
-            let isize = ibytes.len() as u32;
-            ibuf_entries.push((next_ibuf_offset, vsize));
             ibuf_data.extend_from_slice(ibytes);
-            next_ibuf_offset += isize;
+
+            let mesh_index_count = mesh.indexes.len() as u32;
+            let mesh_vertex_count = mesh.vertexes.len() as i32;
+            let entry = (next_first_index, mesh_index_count, next_vertex_offset);
+            buffer_entries.push(entry);
+            next_first_index += mesh_index_count;
+            next_vertex_offset += mesh_vertex_count;
         }
         {
             let vertex_transfer_buf = device
@@ -135,7 +135,7 @@ fn main() {
             while !data_upload_fence.query(&device) {}
         }
 
-        (vbuf_entries, ibuf_entries)
+        buffer_entries
     };
 
     // set up rendering pipeline
@@ -179,13 +179,13 @@ fn main() {
                     200.0,
                 );
                 let orbit_period = 60.0;
-                let orbit_distance = 1.67;
+                let orbit_distance = 3.4;
                 let orbit_angle = -TAU / 9.0 + TAU * elapsed_time_secs / orbit_period;
 
                 camera_pos = vec3(
                     orbit_distance * orbit_angle.cos(),
                     orbit_distance * orbit_angle.sin(),
-                    2.0,
+                    3.0,
                 );
                 view = look_at_mat4(camera_pos, vec3(0.0, 0.0, 0.8), vec3(0.0, 0.0, 1.0));
             }
@@ -216,17 +216,21 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
-                let vunif_transforms_data = [
-                    view,
-                    persp,
-                    Mat4::from_translation(poses[0].pos),
-                    Mat4::from_quat(poses[0].rot),
-                ];
-                let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
-                cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
-                cbuf.push_fragment_uniform_data(0, &funif_camera_data);
+                for (&(ibuf_offset, ibuf_count, vbuf_offset), pose) in
+                    itertools::izip![buffer_entries.iter(), poses.iter()]
+                {
+                    let vunif_transforms_data = [
+                        view,
+                        persp,
+                        Mat4::from_translation(pose.pos),
+                        Mat4::from_quat(pose.rot),
+                    ];
+                    let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
+                    cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
+                    cbuf.push_fragment_uniform_data(0, &funif_camera_data);
 
-                render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
+                    render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
+                }
             }
             device.end_render_pass(render_pass);
 
