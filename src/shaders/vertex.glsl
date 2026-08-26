@@ -16,7 +16,7 @@ layout(location = 1) out float so_lighting;
 
 void main() {
     vec4 worldPos = rotation * translation * va_position;
-    vec4 worldNormal = rotation * translation * va_normal;
+    vec4 worldNormal = rotation * va_normal;
 
     gl_Position = projection * worldPos;
     so_color = va_color;
