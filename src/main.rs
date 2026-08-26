@@ -454,16 +454,16 @@ fn cube_mesh() -> Mesh {
 
 mod anim {
     use std::{
-        f32::consts::PI,
+        f32::consts::TAU,
         ops::{Add, Mul},
     };
 
     use glam::{vec3, Quat, Vec3};
 
     const WAIT_TIME: f32 = 1.5;
-    const MOVE_TIME: f32 = 0.75;
-    const SPIN_TIME: f32 = 0.5;
-    const SPIN_OVERLAP_TIME: f32 = 0.5;
+    const MOVE_TIME: f32 = 0.5;
+    const SPIN_TIME: f32 = 0.33;
+    const SPIN_OVERLAP_TIME: f32 = 0.4;
 
     const ANIM_TIME: f32 = WAIT_TIME + MOVE_TIME + SPIN_TIME + MOVE_TIME;
     const Z_KEYFRAME_TIMES: [f32; 4] = [
@@ -480,7 +480,7 @@ mod anim {
     };
 
     const H: f32 = 1.0;
-    const THETA: f32 = 4.0 * PI;
+    const THETA: f32 = TAU;
 
     pub struct Pose {
         pub pos: Vec3,

@@ -21,7 +21,7 @@ layout(location = 3) out vec3 so_worldNormal;
 const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
 void main() {
-    vec4 worldPos = u_rotation * u_translation * va_position;
+    vec4 worldPos = u_translation * u_rotation * va_position;
     vec4 worldNormal = u_rotation * va_normal;
 
     vec4 viewPos = u_view * worldPos;
