@@ -37,7 +37,7 @@ fn main() {
     // logic data
     let mesh = cube_mesh();
     let mut camera_projection: Mat4;
-    let mut pose: Mat4;
+    let mut pose: anim::Pose;
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
@@ -152,12 +152,7 @@ fn main() {
             }
 
             // cube animation
-            {
-                let trans = Mat4::from_translation(vec3(0.0, 0.0, anim::z(1.0, elapsed_time_secs)));
-                let rot = Mat4::from_quat(anim::rot(elapsed_time_secs));
-
-                pose = rot * trans;
-            }
+            pose = anim::pose(elapsed_time_secs);
         }
 
         // render
@@ -182,7 +177,11 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
-                let unif_transform_data = [camera_projection, pose];
+                let unif_transform_data = [
+                    camera_projection,
+                    Mat4::from_translation(pose.pos),
+                    Mat4::from_quat(pose.rot),
+                ];
                 cbuf.push_vertex_uniform_data(0, &unif_transform_data);
 
                 render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
@@ -470,7 +469,7 @@ mod anim {
         ops::{Add, Mul},
     };
 
-    use glam::Quat;
+    use glam::{vec3, Quat, Vec3};
 
     const WAIT_TIME: f32 = 1.5;
     const MOVE_TIME: f32 = 0.75;
@@ -478,75 +477,83 @@ mod anim {
     const SPIN_OVERLAP_TIME: f32 = 0.5;
 
     const ANIM_TIME: f32 = WAIT_TIME + MOVE_TIME + SPIN_TIME + MOVE_TIME;
-    const KEYFRAME_TIMES: [f32; 4] = [
+    const Z_KEYFRAME_TIMES: [f32; 4] = [
         0.0,
         WAIT_TIME,
         WAIT_TIME + MOVE_TIME,
         WAIT_TIME + MOVE_TIME + SPIN_TIME,
     ];
-
-    pub fn z(h: f32, t: f32) -> f32 {
-        let t = t % ANIM_TIME;
-
-        #[allow(unused_variables)]
-        if (KEYFRAME_TIMES[0]..KEYFRAME_TIMES[1]).contains(&t) {
-            // wait
-            let subt = t - KEYFRAME_TIMES[0];
-            let wlen = KEYFRAME_TIMES[1] - KEYFRAME_TIMES[0];
-            0.0
-        } else if (KEYFRAME_TIMES[1]..KEYFRAME_TIMES[2]).contains(&t) {
-            // move up
-            let subt = t - KEYFRAME_TIMES[1];
-            let wlen = KEYFRAME_TIMES[2] - KEYFRAME_TIMES[1];
-            lerp(0.0, h, smooth(subt / wlen))
-        } else if (KEYFRAME_TIMES[2]..KEYFRAME_TIMES[3]).contains(&t) {
-            // spin
-            let subt = t - KEYFRAME_TIMES[2];
-            let wlen = KEYFRAME_TIMES[3] - KEYFRAME_TIMES[2];
-            h
-        } else if (KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
-            // move down
-            let subt = t - KEYFRAME_TIMES[3];
-            let wlen = ANIM_TIME - KEYFRAME_TIMES[3];
-            lerp(h, 0.0, smooth(subt / wlen))
-        } else {
-            unreachable!()
-        }
-    }
-
-    pub fn rot(t: f32) -> Quat {
-        let t = t % ANIM_TIME;
-
-        let mut rot_keyframe_times = KEYFRAME_TIMES;
+    const ROT_KEYFRAME_TIMES: [f32; 4] = const {
+        let mut rot_keyframe_times = Z_KEYFRAME_TIMES;
         rot_keyframe_times[2] -= SPIN_OVERLAP_TIME;
         rot_keyframe_times[3] += SPIN_OVERLAP_TIME;
+        rot_keyframe_times
+    };
+
+    const H: f32 = 1.0;
+    const THETA: f32 = 4.0 * PI;
+
+    pub struct Pose {
+        pub pos: Vec3,
+        pub rot: Quat,
+    }
+
+    pub fn pose(t: f32) -> Pose {
+        let t = t % ANIM_TIME;
 
         #[allow(unused_variables)]
-        let angle = if (rot_keyframe_times[0]..rot_keyframe_times[1]).contains(&t) {
+        let z = if (Z_KEYFRAME_TIMES[0]..Z_KEYFRAME_TIMES[1]).contains(&t) {
             // wait
-            let subt = t - rot_keyframe_times[0];
-            let wlen = rot_keyframe_times[1] - rot_keyframe_times[0];
+            let subt = t - Z_KEYFRAME_TIMES[0];
+            let wlen = Z_KEYFRAME_TIMES[1] - Z_KEYFRAME_TIMES[0];
             0.0
-        } else if (rot_keyframe_times[1]..rot_keyframe_times[2]).contains(&t) {
+        } else if (Z_KEYFRAME_TIMES[1]..Z_KEYFRAME_TIMES[2]).contains(&t) {
             // move up
-            let subt = t - rot_keyframe_times[1];
-            let wlen = rot_keyframe_times[2] - rot_keyframe_times[1];
-            0.0
-        } else if (rot_keyframe_times[2]..rot_keyframe_times[3]).contains(&t) {
+            let subt = t - Z_KEYFRAME_TIMES[1];
+            let wlen = Z_KEYFRAME_TIMES[2] - Z_KEYFRAME_TIMES[1];
+            lerp(0.0, H, smooth(subt / wlen))
+        } else if (Z_KEYFRAME_TIMES[2]..Z_KEYFRAME_TIMES[3]).contains(&t) {
             // spin
-            let subt = t - rot_keyframe_times[2];
-            let wlen = rot_keyframe_times[3] - rot_keyframe_times[2];
-            lerp(0.0, 2.0 * PI * 2.0, smooth(subt / wlen))
-        } else if (rot_keyframe_times[3]..ANIM_TIME).contains(&t) {
+            let subt = t - Z_KEYFRAME_TIMES[2];
+            let wlen = Z_KEYFRAME_TIMES[3] - Z_KEYFRAME_TIMES[2];
+            H
+        } else if (Z_KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
             // move down
-            let subt = t - rot_keyframe_times[3];
-            let wlen = ANIM_TIME - rot_keyframe_times[3];
+            let subt = t - Z_KEYFRAME_TIMES[3];
+            let wlen = ANIM_TIME - Z_KEYFRAME_TIMES[3];
+            lerp(H, 0.0, smooth(subt / wlen))
+        } else {
+            unreachable!()
+        };
+        let pos = vec3(0.0, 0.0, z);
+
+        #[allow(unused_variables)]
+        let angle = if (ROT_KEYFRAME_TIMES[0]..ROT_KEYFRAME_TIMES[1]).contains(&t) {
+            // wait
+            let subt = t - ROT_KEYFRAME_TIMES[0];
+            let wlen = ROT_KEYFRAME_TIMES[1] - ROT_KEYFRAME_TIMES[0];
+            0.0
+        } else if (ROT_KEYFRAME_TIMES[1]..ROT_KEYFRAME_TIMES[2]).contains(&t) {
+            // move up
+            let subt = t - ROT_KEYFRAME_TIMES[1];
+            let wlen = ROT_KEYFRAME_TIMES[2] - ROT_KEYFRAME_TIMES[1];
+            0.0
+        } else if (ROT_KEYFRAME_TIMES[2]..ROT_KEYFRAME_TIMES[3]).contains(&t) {
+            // spin
+            let subt = t - ROT_KEYFRAME_TIMES[2];
+            let wlen = ROT_KEYFRAME_TIMES[3] - ROT_KEYFRAME_TIMES[2];
+            lerp(0.0, THETA, smooth(subt / wlen))
+        } else if (ROT_KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
+            // move down
+            let subt = t - ROT_KEYFRAME_TIMES[3];
+            let wlen = ANIM_TIME - ROT_KEYFRAME_TIMES[3];
             0.0
         } else {
             unreachable!()
         };
+        let rot = Quat::from_rotation_z(angle);
 
-        Quat::from_rotation_z(angle)
+        Pose { pos, rot }
     }
 
     fn lerp<T: Mul<f32, Output = T> + Add<T, Output = T>>(a: T, b: T, x: f32) -> T {

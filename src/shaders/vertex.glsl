@@ -3,7 +3,8 @@
 
 layout(std140, set = 1, binding = 0) uniform U_Transforms {
     mat4 projection;
-    mat4 pose;
+    mat4 translation;
+    mat4 rotation;
 };
 
 layout(location = 0) in vec4 va_position;
@@ -14,8 +15,8 @@ layout(location = 0) out vec4 so_color;
 layout(location = 1) out float so_lighting;
 
 void main() {
-    vec4 worldPos = pose * va_position;
-    vec4 worldNormal = pose * va_normal;
+    vec4 worldPos = rotation * translation * va_position;
+    vec4 worldNormal = rotation * translation * va_normal;
 
     gl_Position = projection * worldPos;
     so_color = va_color;
