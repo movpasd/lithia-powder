@@ -7,14 +7,18 @@ use sdl3::{
     self,
     gpu::{
         BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
-        CompareOp, CullMode, DepthStencilState, Device, FillMode, FrontFace, GraphicsPipeline,
-        GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState, Shader, ShaderFormat,
-        ShaderStage, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexElementFormat, VertexInputRate, VertexInputState,
+        CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device, FillMode,
+        FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState,
+        SampleCount, Shader, ShaderFormat, ShaderStage, TextureCreateInfo, TextureFormat,
+        TextureType, TextureUsage, TransferBufferLocation, VertexAttribute,
+        VertexBufferDescription, VertexElementFormat, VertexInputRate, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
-    sys::gpu::SDL_GPULoadOp,
+    sys::gpu::{
+        SDL_DownloadFromGPUTexture, SDL_GPULoadOp, SDL_GPUStoreOp, SDL_GPUTextureRegion,
+        SDL_GPUTextureTransferInfo,
+    },
     video::Window,
 };
 
@@ -33,12 +37,15 @@ fn main() {
         .unwrap();
 
     // GPU setup
-    let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, false).unwrap();
+    let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, true).unwrap();
     device = device.with_window(&window).unwrap();
     unsafe {
         let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(device.raw());
-        let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(properties, sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING
-            , EMPTY_C_STRING.as_ptr()));
+        let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(
+            properties,
+            sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING,
+            EMPTY_C_STRING.as_ptr(),
+        ));
         println!("{property_value:?}");
     }
 
@@ -47,11 +54,11 @@ fn main() {
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
         anim::Pose {
-            pos: vec3(3.0, 0.0, 0.0),
+            pos: vec3(-3.0, 0.0, 0.0),
             rot: Quat::default(),
         },
         anim::Pose {
-            pos: vec3(1.5, 3.0, 0.0),
+            pos: vec3(-1.5, 3.0, 0.0),
             rot: Quat::default(),
         },
     ];
@@ -74,8 +81,9 @@ fn main() {
         .with_size(1_024 * 1_024)
         .build()
         .unwrap();
-     
-    let buffer_entries: Vec<(u32, u32, i32)> /* vec[(first_index, num_indices, vertex_offset)] */ = { 
+
+    // vec[(first_index, num_indices, vertex_offset)]
+    let buffer_entries: Vec<(u32, u32, i32)> = {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
@@ -138,8 +146,21 @@ fn main() {
         buffer_entries
     };
 
-    // set up rendering pipeline
+    // set up rendering pipeline and resource
     let pipeline = prepare_render_pipeline(&device, &window);
+    let mut depth_buffer = device
+        .create_texture(
+            TextureCreateInfo::new()
+                .with_type(TextureType::_2D)
+                .with_format(TextureFormat::D16Unorm)
+                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
+                .with_width(1920)
+                .with_height(1080)
+                .with_layer_count_or_depth(1)
+                .with_num_levels(1)
+                .with_sample_count(SampleCount::NoMultiSampling),
+        )
+        .unwrap();
 
     // event loop
     let start_time = Instant::now();
@@ -179,13 +200,13 @@ fn main() {
                     200.0,
                 );
                 let orbit_period = 60.0;
-                let orbit_distance = 3.4;
+                let orbit_distance = 4.5;
                 let orbit_angle = -TAU / 9.0 + TAU * elapsed_time_secs / orbit_period;
 
                 camera_pos = vec3(
                     orbit_distance * orbit_angle.cos(),
                     orbit_distance * orbit_angle.sin(),
-                    3.0,
+                    1.2,
                 );
                 view = look_at_mat4(camera_pos, vec3(0.0, 0.0, 0.8), vec3(0.0, 0.0, 1.0));
             }
@@ -205,7 +226,20 @@ fn main() {
                 .with_clear_color(Color::RGB(127, 127, 127));
 
             let render_pass = device
-                .begin_render_pass(&cbuf, &[color_target_info], None)
+                .begin_render_pass(
+                    &cbuf,
+                    &[color_target_info],
+                    Some(
+                        &DepthStencilTargetInfo::new()
+                            .with_texture(&mut depth_buffer)
+                            .with_clear_depth(1.0)
+                            .with_load_op(SDL_GPULoadOp::CLEAR)
+                            .with_store_op(SDL_GPUStoreOp::DONT_CARE)
+                            .with_stencil_load_op(SDL_GPULoadOp::DONT_CARE)
+                            .with_stencil_store_op(SDL_GPUStoreOp::DONT_CARE)
+                            .with_cycle(true),
+                    ),
+                )
                 .unwrap();
             {
                 render_pass.bind_graphics_pipeline(&pipeline);
@@ -291,7 +325,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
             .with_code(
                 ShaderFormat::SPIRV,
                 fragment_ir.as_binary_u8(),
-                ShaderStage::Vertex,
+                ShaderStage::Fragment,
             )
             .with_uniform_buffers(1)
             .build()
@@ -321,13 +355,17 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
         )
         .with_depth_stencil_state(
             DepthStencilState::new()
+                .with_compare_op(CompareOp::Less)
                 .with_enable_depth_test(true)
-                .with_compare_op(CompareOp::Less),
+                .with_enable_depth_write(true),
         )
         .with_target_info(
-            GraphicsPipelineTargetInfo::new().with_color_target_descriptions(&[
-                ColorTargetDescription::new().with_format(texture_format),
-            ]),
+            GraphicsPipelineTargetInfo::new()
+                .with_color_target_descriptions(&[
+                    ColorTargetDescription::new().with_format(texture_format)
+                ])
+                .with_has_depth_stencil_target(true)
+                .with_depth_stencil_format(TextureFormat::D16Unorm),
         )
         .build()
         .unwrap()
@@ -351,6 +389,51 @@ fn mat4_as_glsl(mat: Mat4) -> String {
         z.x, z.y, z.z, z.w,
         w.x, w.y, w.z, w.w,
     );
+}
+
+fn download_texture_content<T: std::fmt::Debug + std::marker::Copy>(
+    device: &sdl3::gpu::Device,
+    texture: &sdl3::gpu::Texture,
+) -> Vec<T> {
+    let download_buffer = device
+        .create_transfer_buffer()
+        .with_size(1_024 * 1_024)
+        .build()
+        .unwrap();
+    let vertex_data_download = device.acquire_command_buffer().unwrap();
+    {
+        let copy_pass = device.begin_copy_pass(&vertex_data_download).unwrap();
+        unsafe {
+            SDL_DownloadFromGPUTexture(
+                copy_pass.raw(),
+                &SDL_GPUTextureRegion {
+                    texture: texture.raw(),
+                    mip_level: 0,
+                    layer: 0,
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    w: 0,
+                    h: 0,
+                    d: 0,
+                },
+                &SDL_GPUTextureTransferInfo {
+                    transfer_buffer: download_buffer.raw(),
+                    offset: 0,
+                    pixels_per_row: 0,
+                    rows_per_layer: 0,
+                },
+            );
+        }
+        device.end_copy_pass(copy_pass);
+    }
+    let vertex_data_download_fence = vertex_data_download
+        .submit_and_acquire_fence(device)
+        .unwrap();
+    while !vertex_data_download_fence.query(device) {}
+
+    let content = download_buffer.map::<T>(device, false).mem().to_owned();
+    content
 }
 
 // -- vertex and mesh stuff --
