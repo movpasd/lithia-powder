@@ -2,7 +2,7 @@
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Mat4, Vec4};
+use glam::{vec3, Mat4, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -36,6 +36,7 @@ fn main() {
 
     // logic data
     let mesh = cube_mesh();
+    let mut camera_pos: Vec3;
     let mut view: Mat4;
     let mut persp: Mat4;
     let mut pose: anim::Pose;
@@ -138,17 +139,15 @@ fn main() {
                     200.0,
                 );
                 let orbit_period = 60.0;
-                let orbit_distance = 3.214;
-                let orbit_angle = TAU * elapsed_time_secs / orbit_period;
-                view = look_at_mat4(
-                    vec3(
-                        orbit_distance * orbit_angle.cos(),
-                        orbit_distance * orbit_angle.sin(),
-                        2.21,
-                    ),
-                    vec3(0.0, 0.0, 0.8),
-                    vec3(0.0, 0.0, 1.0),
+                let orbit_distance = 1.67;
+                let orbit_angle = -TAU / 9.0 + TAU * elapsed_time_secs / orbit_period;
+
+                camera_pos = vec3(
+                    orbit_distance * orbit_angle.cos(),
+                    orbit_distance * orbit_angle.sin(),
+                    2.0,
                 );
+                view = look_at_mat4(camera_pos, vec3(0.0, 0.0, 0.8), vec3(0.0, 0.0, 1.0));
             }
 
             // cube animation
@@ -177,13 +176,15 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
-                let unif_transform_data = [
+                let vunif_transforms_data = [
                     view,
                     persp,
                     Mat4::from_translation(pose.pos),
                     Mat4::from_quat(pose.rot),
                 ];
-                cbuf.push_vertex_uniform_data(0, &unif_transform_data);
+                let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
+                cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
+                cbuf.push_fragment_uniform_data(0, &funif_camera_data);
 
                 render_pass.draw_indexed_primitives(index_buffer.len(), 1, 0, 0, 0);
             }
@@ -250,6 +251,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
                 fragment_ir.as_binary_u8(),
                 ShaderStage::Vertex,
             )
+            .with_uniform_buffers(1)
             .build()
             .unwrap();
     }
