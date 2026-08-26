@@ -35,8 +35,25 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     // logic data
-    let mesh: Vec<Mesh> = vec![cube_mesh()];
-    let mut poses: Vec<anim::Pose> = vec![anim::Pose::default()];
+    let meshes: Vec<Mesh> = vec![
+        cube_mesh(),
+        {
+            let mut c = cube_mesh();
+            c.transform(Mat4::from_translation(vec3(3.0, 0.0, 0.0)));
+            c
+        },
+        {
+            let mut c = cube_mesh();
+            c.transform(Mat4::from_translation(vec3(1.5, 3.0, 0.0)));
+            c
+        },
+    ];
+    let mut poses: Vec<anim::Pose> = vec![
+        anim::Pose::default(),
+        anim::Pose::default(),
+        anim::Pose::default(),
+    ];
+    assert!(meshes.len() == poses.len());
 
     let mut camera_pos: Vec3;
     let mut view: Mat4;
@@ -55,47 +72,71 @@ fn main() {
         .with_size(1_024 * 1_024)
         .build()
         .unwrap();
-    {
-        let vertex_transfer_buf = device
-            .create_transfer_buffer()
-            .with_size(vertex_buffer.len())
-            .build()
-            .unwrap();
-        let vertex_bytes = bytemuck::cast_slice::<_, u8>(&mesh[0].vertexes);
-        vertex_transfer_buf.map(&device, true).mem_mut()[0..vertex_bytes.len()]
-            .copy_from_slice(vertex_bytes);
+    let vbuf_entries: Vec<(u32, u32)>; // (offset in bytes, size in bytes)
+    let ibuf_entries: Vec<(u32, u32)>; // idem
+    (vbuf_entries, ibuf_entries) = {
+        // accumulate data into local byte array, keeping track of entries
+        let mut vbuf_data: Vec<u8> = vec![];
+        let mut ibuf_data: Vec<u8> = vec![];
+        let mut vbuf_entries = vec![];
+        let mut ibuf_entries = vec![];
+        let mut next_vbuf_offset: u32 = 0;
+        let mut next_ibuf_offset: u32 = 0;
+        for mesh in &meshes {
+            let vbytes = bytemuck::cast_slice::<_, u8>(&mesh.vertexes);
+            let vsize = vbytes.len() as u32;
+            vbuf_entries.push((next_vbuf_offset, vsize));
+            vbuf_data.extend_from_slice(vbytes);
+            next_vbuf_offset += vsize;
 
-        let index_transfer_buf = device
-            .create_transfer_buffer()
-            .with_size(index_buffer.len())
-            .build()
-            .unwrap();
-        let index_bytes = bytemuck::cast_slice::<_, u8>(&mesh[0].indexes);
-        index_transfer_buf.map(&device, true).mem_mut()[0..index_bytes.len()]
-            .copy_from_slice(index_bytes);
-
-        let data_upload = device.acquire_command_buffer().unwrap();
-        {
-            let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
-            copy_pass.upload_to_gpu_buffer(
-                TransferBufferLocation::new().with_transfer_buffer(&vertex_transfer_buf),
-                BufferRegion::new()
-                    .with_buffer(&vertex_buffer)
-                    .with_size(vertex_buffer.len()),
-                true,
-            );
-            copy_pass.upload_to_gpu_buffer(
-                TransferBufferLocation::new().with_transfer_buffer(&index_transfer_buf),
-                BufferRegion::new()
-                    .with_buffer(&index_buffer)
-                    .with_size(index_buffer.len()),
-                true,
-            );
-            device.end_copy_pass(copy_pass);
+            let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
+            let isize = ibytes.len() as u32;
+            ibuf_entries.push((next_ibuf_offset, vsize));
+            ibuf_data.extend_from_slice(ibytes);
+            next_ibuf_offset += isize;
         }
-        let data_upload_fence = data_upload.submit_and_acquire_fence(&device).unwrap();
-        while !data_upload_fence.query(&device) {}
-    }
+        {
+            let vertex_transfer_buf = device
+                .create_transfer_buffer()
+                .with_size(vertex_buffer.len())
+                .build()
+                .unwrap();
+            let index_transfer_buf = device
+                .create_transfer_buffer()
+                .with_size(index_buffer.len())
+                .build()
+                .unwrap();
+
+            vertex_transfer_buf.map(&device, true).mem_mut()[0..vbuf_data.len()]
+                .copy_from_slice(&vbuf_data);
+            index_transfer_buf.map(&device, true).mem_mut()[0..ibuf_data.len()]
+                .copy_from_slice(&ibuf_data);
+
+            let data_upload = device.acquire_command_buffer().unwrap();
+            {
+                let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
+                copy_pass.upload_to_gpu_buffer(
+                    TransferBufferLocation::new().with_transfer_buffer(&vertex_transfer_buf),
+                    BufferRegion::new()
+                        .with_buffer(&vertex_buffer)
+                        .with_size(vertex_buffer.len()),
+                    true,
+                );
+                copy_pass.upload_to_gpu_buffer(
+                    TransferBufferLocation::new().with_transfer_buffer(&index_transfer_buf),
+                    BufferRegion::new()
+                        .with_buffer(&index_buffer)
+                        .with_size(index_buffer.len()),
+                    true,
+                );
+                device.end_copy_pass(copy_pass);
+            }
+            let data_upload_fence = data_upload.submit_and_acquire_fence(&device).unwrap();
+            while !data_upload_fence.query(&device) {}
+        }
+
+        (vbuf_entries, ibuf_entries)
+    };
 
     // set up rendering pipeline
     let pipeline = prepare_render_pipeline(&device, &window);
