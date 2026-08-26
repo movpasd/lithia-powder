@@ -310,22 +310,13 @@ fn mat4_as_glsl(mat: Mat4) -> String {
 
 // -- vertex and mesh stuff --
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
 #[repr(C)]
 struct Vertex {
     position: Vec4,
     color: Vec4,
     normal: Vec4,
 }
-// check alignment
-const _: () = {
-    let fields_size = {
-        size_of::<Vec4>() // position
-        + size_of::<Vec4>() // color
-        + size_of::<Vec4>() // normal
-    };
-    assert!(size_of::<Vertex>() == fields_size);
-};
 impl Vertex {
     const ATTRIBUTE_COUNT: u32 = 3;
 
@@ -349,9 +340,6 @@ impl Vertex {
         ]
     }
 }
-
-unsafe impl bytemuck::Zeroable for Vertex {}
-unsafe impl bytemuck::Pod for Vertex {}
 
 /// do not store more than u32::MAX
 #[derive(Debug, Clone)]
