@@ -35,23 +35,24 @@ fn main() {
     device = device.with_window(&window).unwrap();
 
     // logic data
-    let mesh = cube_mesh();
+    let mesh: Vec<Mesh> = vec![cube_mesh()];
+    let mut poses: Vec<anim::Pose> = vec![anim::Pose::default()];
+
     let mut camera_pos: Vec3;
     let mut view: Mat4;
     let mut persp: Mat4;
-    let mut pose: anim::Pose;
 
     // upload data to GPU geometry buffers
     let vertex_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(mesh.vertexes_bytes_size())
+        .with_size(1_024 * 1_024)
         .build()
         .unwrap();
     let index_buffer = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
-        .with_size(mesh.indexes_bytes_size())
+        .with_size(1_024 * 1_024)
         .build()
         .unwrap();
     {
@@ -60,20 +61,18 @@ fn main() {
             .with_size(vertex_buffer.len())
             .build()
             .unwrap();
-        vertex_transfer_buf
-            .map(&device, true)
-            .mem_mut()
-            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.vertexes));
+        let vertex_bytes = bytemuck::cast_slice::<_, u8>(&mesh[0].vertexes);
+        vertex_transfer_buf.map(&device, true).mem_mut()[0..vertex_bytes.len()]
+            .copy_from_slice(vertex_bytes);
 
         let index_transfer_buf = device
             .create_transfer_buffer()
             .with_size(index_buffer.len())
             .build()
             .unwrap();
-        index_transfer_buf
-            .map(&device, true)
-            .mem_mut()
-            .copy_from_slice(bytemuck::cast_slice::<_, u8>(&mesh.indexes));
+        let index_bytes = bytemuck::cast_slice::<_, u8>(&mesh[0].indexes);
+        index_transfer_buf.map(&device, true).mem_mut()[0..index_bytes.len()]
+            .copy_from_slice(index_bytes);
 
         let data_upload = device.acquire_command_buffer().unwrap();
         {
@@ -151,7 +150,7 @@ fn main() {
             }
 
             // cube animation
-            pose = anim::pose(elapsed_time_secs);
+            poses[0] = anim::pose(elapsed_time_secs);
         }
 
         // render
@@ -179,8 +178,8 @@ fn main() {
                 let vunif_transforms_data = [
                     view,
                     persp,
-                    Mat4::from_translation(pose.pos),
-                    Mat4::from_quat(pose.rot),
+                    Mat4::from_translation(poses[0].pos),
+                    Mat4::from_quat(poses[0].rot),
                 ];
                 let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
                 cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
@@ -482,6 +481,7 @@ mod anim {
     const H: f32 = 1.0;
     const THETA: f32 = TAU;
 
+    #[derive(Debug, Default)]
     pub struct Pose {
         pub pos: Vec3,
         pub rot: Quat,
@@ -540,7 +540,7 @@ mod anim {
         } else {
             unreachable!()
         };
-        let rot = Quat::from_rotation_z(angle);
+        let rot = Quat::from_rotation_x(angle);
 
         Pose { pos, rot }
     }
