@@ -4,13 +4,13 @@ use glam::{vec3, Mat4, Quat, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
-        BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
-        CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device, FillMode,
-        FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize, LoadOp,
-        RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage, StoreOp,
-        TextureCreateInfo, TextureFormat, TextureType, TextureUsage, TransferBufferLocation,
-        VertexAttribute, VertexBufferDescription, VertexElementFormat, VertexInputRate,
-        VertexInputState,
+        Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription,
+        ColorTargetInfo, CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device,
+        FillMode, FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize,
+        LoadOp, RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage, StoreOp, Texture,
+        TextureCreateInfo, TextureFormat, TextureType, TextureUsage, TransferBuffer,
+        TransferBufferLocation, VertexAttribute, VertexBufferDescription, VertexElementFormat,
+        VertexInputRate, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -68,43 +68,8 @@ fn main() {
         println!("{property_value:?}");
     }
 
-    // GPU resource definition
-    let mesh_vbuf = device
-        .create_buffer()
-        .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(1_024 * 1_024)
-        .build()
-        .unwrap();
-    let mesh_ibuf = device
-        .create_buffer()
-        .with_usage(BufferUsageFlags::INDEX)
-        .with_size(1_024 * 1_024)
-        .build()
-        .unwrap();
-    let mut dbuf = device
-        .create_texture(
-            TextureCreateInfo::new()
-                .with_type(TextureType::_2D)
-                .with_format(TextureFormat::D16Unorm)
-                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
-                .with_width(1920)
-                .with_height(1080)
-                .with_layer_count_or_depth(1)
-                .with_num_levels(1)
-                .with_sample_count(SampleCount::NoMultiSampling),
-        )
-        .unwrap();
-    let tbuf1 = device
-        .create_transfer_buffer()
-        .with_size(mesh_vbuf.len())
-        .build()
-        .unwrap();
-    let tbuf2 = device
-        .create_transfer_buffer()
-        .with_size(mesh_ibuf.len())
-        .build()
-        .unwrap();
-
+    // GPU declarations
+    let mut gpu_resources = prepare_gpu_resources(&device);
     let pipeline = prepare_render_pipeline(&device, &window);
 
     // mesh data upload
@@ -132,26 +97,26 @@ fn main() {
         }
         {
 
-            tbuf1.map(&device, true).mem_mut()[0..vbuf_data.len()]
+            gpu_resources.tbuf1.map(&device, true).mem_mut()[0..vbuf_data.len()]
                 .copy_from_slice(&vbuf_data);
-            tbuf2.map(&device, true).mem_mut()[0..ibuf_data.len()]
+            gpu_resources.tbuf2.map(&device, true).mem_mut()[0..ibuf_data.len()]
                 .copy_from_slice(&ibuf_data);
 
             let data_upload = device.acquire_command_buffer().unwrap();
             {
                 let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
                 copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&tbuf1),
+                    TransferBufferLocation::new().with_transfer_buffer(&gpu_resources.tbuf1),
                     BufferRegion::new()
-                        .with_buffer(&mesh_vbuf)
-                        .with_size(mesh_vbuf.len()),
+                        .with_buffer(&gpu_resources.mesh_vbuf)
+                        .with_size(gpu_resources.mesh_vbuf.len()),
                     true,
                 );
                 copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&tbuf2),
+                    TransferBufferLocation::new().with_transfer_buffer(&gpu_resources.tbuf2),
                     BufferRegion::new()
-                        .with_buffer(&mesh_ibuf)
-                        .with_size(mesh_ibuf.len()),
+                        .with_buffer(&gpu_resources.mesh_ibuf)
+                        .with_size(gpu_resources.mesh_ibuf.len()),
                     true,
                 );
                 device.end_copy_pass(copy_pass);
@@ -232,7 +197,7 @@ fn main() {
                     &[color_target_info],
                     Some(
                         &DepthStencilTargetInfo::new()
-                            .with_texture(&mut dbuf)
+                            .with_texture(&mut gpu_resources.dbuf)
                             .with_clear_depth(1.0)
                             .with_load_op(LoadOp::CLEAR)
                             .with_store_op(StoreOp::DONT_CARE)
@@ -244,9 +209,12 @@ fn main() {
                 .unwrap();
             {
                 render_pass.bind_graphics_pipeline(&pipeline);
-                render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&mesh_vbuf)]);
+                render_pass.bind_vertex_buffers(
+                    0,
+                    &[BufferBinding::new().with_buffer(&gpu_resources.mesh_vbuf)],
+                );
                 render_pass.bind_index_buffer(
-                    &BufferBinding::new().with_buffer(&mesh_ibuf),
+                    &BufferBinding::new().with_buffer(&gpu_resources.mesh_ibuf),
                     IndexElementSize::_32BIT,
                 );
 
@@ -273,6 +241,59 @@ fn main() {
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
+    }
+}
+
+struct GpuResources {
+    mesh_vbuf: Buffer,
+    mesh_ibuf: Buffer,
+    dbuf: Texture<'static>,
+    tbuf1: TransferBuffer,
+    tbuf2: TransferBuffer,
+}
+
+fn prepare_gpu_resources(device: &Device) -> GpuResources {
+    let mesh_vbuf = device
+        .create_buffer()
+        .with_usage(BufferUsageFlags::VERTEX)
+        .with_size(1_024 * 1_024)
+        .build()
+        .unwrap();
+    let mesh_ibuf = device
+        .create_buffer()
+        .with_usage(BufferUsageFlags::INDEX)
+        .with_size(1_024 * 1_024)
+        .build()
+        .unwrap();
+    let dbuf = device
+        .create_texture(
+            TextureCreateInfo::new()
+                .with_type(TextureType::_2D)
+                .with_format(TextureFormat::D16Unorm)
+                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
+                .with_width(1920)
+                .with_height(1080)
+                .with_layer_count_or_depth(1)
+                .with_num_levels(1)
+                .with_sample_count(SampleCount::NoMultiSampling),
+        )
+        .unwrap();
+    let tbuf1 = device
+        .create_transfer_buffer()
+        .with_size(mesh_vbuf.len())
+        .build()
+        .unwrap();
+    let tbuf2 = device
+        .create_transfer_buffer()
+        .with_size(mesh_ibuf.len())
+        .build()
+        .unwrap();
+    GpuResources {
+        mesh_vbuf,
+        mesh_ibuf,
+        dbuf,
+        tbuf1,
+        tbuf2,
     }
 }
 
