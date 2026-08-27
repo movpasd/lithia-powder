@@ -23,7 +23,11 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // geometry data
-    let meshes: Vec<mesh::Mesh> = vec![mesh::cube(), mesh::cube(), mesh::cube()];
+    let meshes: Vec<mesh::Mesh<Vec4>> = vec![
+        mesh::colorful_cube(),
+        mesh::colorful_cube(),
+        mesh::colorful_cube(),
+    ];
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
         anim::Pose {
@@ -112,7 +116,9 @@ fn main() {
         let mut next_first_index: u32 = 0;
         let mut next_vertex_offset: i32 = 0;
         for mesh in &meshes {
-            let vbytes = bytemuck::cast_slice::<_, u8>(&mesh.vertexes);
+            let gpu_vertexes: Vec<_> = mesh.vertexes.iter().map(GpuVertex::from_mesh_vertex).collect();
+
+            let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
             vbuf_data.extend_from_slice(vbytes);
             let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
             ibuf_data.extend_from_slice(ibytes);
@@ -391,25 +397,41 @@ impl GpuVertex {
                 .with_format(VertexElementFormat::Float4),
         ]
     }
+
+    fn from_mesh_vertex(v: &mesh::Vertex<Vec4>) -> Self {
+        Self {
+            position: v.position,
+            color: v.data,
+            normal: v.normal,
+        }
+    }
 }
 
 mod mesh {
     use glam::{vec3, Mat4, Vec4};
 
+    /// (make sure your positions have w=1.0 and normals have w=0.0)
+    #[derive(Debug, Clone)]
+    pub struct Vertex<D> {
+        pub position: Vec4,
+        pub normal: Vec4,
+        pub data: D,
+    }
+
     /// (do not store more than u32::MAX)
     #[derive(Debug, Clone)]
-    pub struct Mesh {
-        pub vertexes: Vec<super::GpuVertex>,
+    pub struct Mesh<D> {
+        pub vertexes: Vec<Vertex<D>>,
         pub indexes: Vec<u32>,
     }
-    impl Mesh {
-        pub fn new_empty() -> Mesh {
+    impl<D> Mesh<D> {
+        pub fn new_empty() -> Self {
             Mesh {
                 vertexes: vec![],
                 indexes: vec![],
             }
         }
-        pub fn append(&mut self, other: &mut Mesh) {
+        pub fn append(&mut self, other: &mut Self) {
             other
                 .indexes
                 .iter_mut()
@@ -425,7 +447,7 @@ mod mesh {
         }
     }
 
-    pub fn cube() -> Mesh {
+    pub fn colorful_cube() -> Mesh<Vec4> {
         use std::f32::consts::{FRAC_PI_2, PI};
 
         let mut plus_z_face = {
@@ -442,17 +464,17 @@ mod mesh {
                 [0.75, 1.0, 0.25, 1.0],
             ];
             let vertex_normals = [
-                [0.0, 0.0, 1.0, 1.0],
-                [0.0, 0.0, 1.0, 1.0],
-                [0.0, 0.0, 1.0, 1.0],
-                [0.0, 0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
             ];
-            let vertexes: Vec<super::GpuVertex> =
+            let vertexes: Vec<Vertex<_>> =
                 itertools::izip!(vertex_positions, vertex_colors, vertex_normals)
-                    .map(|(pos_arr, col_arr, norm_arr)| super::GpuVertex {
+                    .map(|(pos_arr, col_arr, norm_arr)| Vertex {
                         position: Vec4::from_array(pos_arr),
-                        color: Vec4::from_array(col_arr),
                         normal: Vec4::from_array(norm_arr),
+                        data: Vec4::from_array(col_arr),
                     })
                     .collect();
 
