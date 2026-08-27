@@ -27,6 +27,26 @@ const EMPTY_C_STRING: &CStr = c"";
 fn main() {
     let sdl = sdl3::init().unwrap();
 
+    // geometry data
+    let meshes: Vec<Mesh> = vec![cube_mesh(), cube_mesh(), cube_mesh()];
+    let mut poses: Vec<anim::Pose> = vec![
+        anim::Pose::default(),
+        anim::Pose {
+            pos: vec3(-3.0, 0.0, 0.0),
+            rot: Quat::default(),
+        },
+        anim::Pose {
+            pos: vec3(-1.5, 3.0, 0.0),
+            rot: Quat::default(),
+        },
+    ];
+    assert!(meshes.len() == poses.len());
+
+    // camera data
+    let mut camera_pos: Vec3;
+    let mut view: Mat4;
+    let mut persp: Mat4;
+
     // window setup
     let video_sys = sdl.video().unwrap();
     let window = video_sys
@@ -49,41 +69,47 @@ fn main() {
         println!("{property_value:?}");
     }
 
-    // logic data
-    let meshes: Vec<Mesh> = vec![cube_mesh(), cube_mesh(), cube_mesh()];
-    let mut poses: Vec<anim::Pose> = vec![
-        anim::Pose::default(),
-        anim::Pose {
-            pos: vec3(-3.0, 0.0, 0.0),
-            rot: Quat::default(),
-        },
-        anim::Pose {
-            pos: vec3(-1.5, 3.0, 0.0),
-            rot: Quat::default(),
-        },
-    ];
-    assert!(meshes.len() == poses.len());
-
-    let mut camera_pos: Vec3;
-    let mut view: Mat4;
-    let mut persp: Mat4;
-
-    // upload data to GPU geometry buffers
-    let vertex_buffer = device
+    // GPU resource definition
+    let mesh_vbuf = device
         .create_buffer()
         .with_usage(BufferUsageFlags::VERTEX)
         .with_size(1_024 * 1_024)
         .build()
         .unwrap();
-    let index_buffer = device
+    let mesh_ibuf = device
         .create_buffer()
         .with_usage(BufferUsageFlags::INDEX)
         .with_size(1_024 * 1_024)
         .build()
         .unwrap();
+    let mut dbuf = device
+        .create_texture(
+            TextureCreateInfo::new()
+                .with_type(TextureType::_2D)
+                .with_format(TextureFormat::D16Unorm)
+                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
+                .with_width(1920)
+                .with_height(1080)
+                .with_layer_count_or_depth(1)
+                .with_num_levels(1)
+                .with_sample_count(SampleCount::NoMultiSampling),
+        )
+        .unwrap();
+    let tbuf1 = device
+        .create_transfer_buffer()
+        .with_size(mesh_vbuf.len())
+        .build()
+        .unwrap();
+    let tbuf2 = device
+        .create_transfer_buffer()
+        .with_size(mesh_ibuf.len())
+        .build()
+        .unwrap();
 
-    // vec[(first_index, num_indices, vertex_offset)]
-    let buffer_entries: Vec<(u32, u32, i32)> = {
+    let pipeline = prepare_render_pipeline(&device, &window);
+
+    // mesh data upload
+    let mesh_buf_entries: Vec<(u32, u32, i32)> /* vec[(first_index, num_indices, vertex_offset)] */ = {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
@@ -104,37 +130,27 @@ fn main() {
             next_vertex_offset += mesh_vertex_count;
         }
         {
-            let vertex_transfer_buf = device
-                .create_transfer_buffer()
-                .with_size(vertex_buffer.len())
-                .build()
-                .unwrap();
-            let index_transfer_buf = device
-                .create_transfer_buffer()
-                .with_size(index_buffer.len())
-                .build()
-                .unwrap();
 
-            vertex_transfer_buf.map(&device, true).mem_mut()[0..vbuf_data.len()]
+            tbuf1.map(&device, true).mem_mut()[0..vbuf_data.len()]
                 .copy_from_slice(&vbuf_data);
-            index_transfer_buf.map(&device, true).mem_mut()[0..ibuf_data.len()]
+            tbuf2.map(&device, true).mem_mut()[0..ibuf_data.len()]
                 .copy_from_slice(&ibuf_data);
 
             let data_upload = device.acquire_command_buffer().unwrap();
             {
                 let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
                 copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&vertex_transfer_buf),
+                    TransferBufferLocation::new().with_transfer_buffer(&tbuf1),
                     BufferRegion::new()
-                        .with_buffer(&vertex_buffer)
-                        .with_size(vertex_buffer.len()),
+                        .with_buffer(&mesh_vbuf)
+                        .with_size(mesh_vbuf.len()),
                     true,
                 );
                 copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&index_transfer_buf),
+                    TransferBufferLocation::new().with_transfer_buffer(&tbuf2),
                     BufferRegion::new()
-                        .with_buffer(&index_buffer)
-                        .with_size(index_buffer.len()),
+                        .with_buffer(&mesh_ibuf)
+                        .with_size(mesh_ibuf.len()),
                     true,
                 );
                 device.end_copy_pass(copy_pass);
@@ -145,22 +161,6 @@ fn main() {
 
         buffer_entries
     };
-
-    // set up rendering pipeline and resource
-    let pipeline = prepare_render_pipeline(&device, &window);
-    let mut depth_buffer = device
-        .create_texture(
-            TextureCreateInfo::new()
-                .with_type(TextureType::_2D)
-                .with_format(TextureFormat::D16Unorm)
-                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
-                .with_width(1920)
-                .with_height(1080)
-                .with_layer_count_or_depth(1)
-                .with_num_levels(1)
-                .with_sample_count(SampleCount::NoMultiSampling),
-        )
-        .unwrap();
 
     // event loop
     let start_time = Instant::now();
@@ -231,7 +231,7 @@ fn main() {
                     &[color_target_info],
                     Some(
                         &DepthStencilTargetInfo::new()
-                            .with_texture(&mut depth_buffer)
+                            .with_texture(&mut dbuf)
                             .with_clear_depth(1.0)
                             .with_load_op(SDL_GPULoadOp::CLEAR)
                             .with_store_op(SDL_GPUStoreOp::DONT_CARE)
@@ -243,15 +243,14 @@ fn main() {
                 .unwrap();
             {
                 render_pass.bind_graphics_pipeline(&pipeline);
-                render_pass
-                    .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&vertex_buffer)]);
+                render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&mesh_vbuf)]);
                 render_pass.bind_index_buffer(
-                    &BufferBinding::new().with_buffer(&index_buffer),
+                    &BufferBinding::new().with_buffer(&mesh_ibuf),
                     IndexElementSize::_32BIT,
                 );
 
                 for (&(ibuf_offset, ibuf_count, vbuf_offset), pose) in
-                    itertools::izip![buffer_entries.iter(), poses.iter()]
+                    itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
                     let vunif_transforms_data = [
                         view,
