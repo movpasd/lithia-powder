@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{f32::consts::TAU, ffi::CStr, time::Instant};
 
 use glam::{vec3, Mat4, Quat, Vec3, Vec4};
@@ -8,17 +6,14 @@ use sdl3::{
     gpu::{
         BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, ColorTargetInfo,
         CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device, FillMode,
-        FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize, RasterizerState,
-        SampleCount, Shader, ShaderFormat, ShaderStage, TextureCreateInfo, TextureFormat,
-        TextureType, TextureUsage, TransferBufferLocation, VertexAttribute,
-        VertexBufferDescription, VertexElementFormat, VertexInputRate, VertexInputState,
+        FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize, LoadOp,
+        RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage, StoreOp,
+        TextureCreateInfo, TextureFormat, TextureType, TextureUsage, TransferBufferLocation,
+        VertexAttribute, VertexBufferDescription, VertexElementFormat, VertexInputRate,
+        VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
-    sys::gpu::{
-        SDL_DownloadFromGPUTexture, SDL_GPULoadOp, SDL_GPUStoreOp, SDL_GPUTextureRegion,
-        SDL_GPUTextureTransferInfo,
-    },
     video::Window,
 };
 
@@ -28,7 +23,7 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // geometry data
-    let meshes: Vec<Mesh> = vec![cube_mesh(), cube_mesh(), cube_mesh()];
+    let meshes: Vec<mesh::Mesh> = vec![mesh::cube(), mesh::cube(), mesh::cube()];
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
         anim::Pose {
@@ -222,7 +217,7 @@ fn main() {
             let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
             let color_target_info = ColorTargetInfo::default()
                 .with_texture(&screen_texture)
-                .with_load_op(SDL_GPULoadOp::CLEAR)
+                .with_load_op(LoadOp::CLEAR)
                 .with_clear_color(Color::RGB(127, 127, 127));
 
             let render_pass = device
@@ -233,10 +228,10 @@ fn main() {
                         &DepthStencilTargetInfo::new()
                             .with_texture(&mut dbuf)
                             .with_clear_depth(1.0)
-                            .with_load_op(SDL_GPULoadOp::CLEAR)
-                            .with_store_op(SDL_GPUStoreOp::DONT_CARE)
-                            .with_stencil_load_op(SDL_GPULoadOp::DONT_CARE)
-                            .with_stencil_store_op(SDL_GPUStoreOp::DONT_CARE)
+                            .with_load_op(LoadOp::CLEAR)
+                            .with_store_op(StoreOp::DONT_CARE)
+                            .with_stencil_load_op(LoadOp::DONT_CARE)
+                            .with_stencil_store_op(StoreOp::DONT_CARE)
                             .with_cycle(true),
                     ),
                 )
@@ -274,8 +269,6 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
     }
 }
-
-// -- rendering --
 
 fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline {
     use sdl3::gpu::PrimitiveType;
@@ -341,9 +334,9 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
             VertexInputState::new()
                 .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
                     .with_slot(0)
-                    .with_pitch(size_of::<Vertex>() as u32)
+                    .with_pitch(size_of::<GpuVertex>() as u32)
                     .with_input_rate(VertexInputRate::Vertex)])
-                .with_vertex_attributes(&Vertex::get_attributes(0, 0)),
+                .with_vertex_attributes(&GpuVertex::get_attributes(0, 0)),
         )
         .with_primitive_type(PrimitiveType::TriangleList)
         .with_rasterizer_state(
@@ -370,83 +363,15 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
         .unwrap()
 }
 
-// -- utilities --
-
-fn mat4_as_glsl(mat: Mat4) -> String {
-    let (x, y, z, w) = (mat.x_axis, mat.y_axis, mat.z_axis, mat.w_axis);
-    #[rustfmt::skip]
-    return format!(
-"mat4(
-    vec4({:?}, {:?}, {:?}, {:?}),
-    vec4({:?}, {:?}, {:?}, {:?}),
-    vec4({:?}, {:?}, {:?}, {:?}),
-    vec4({:?}, {:?}, {:?}, {:?})
-)
-",
-        x.x, x.y, x.z, x.w,
-        y.x, y.y, y.z, y.w,
-        z.x, z.y, z.z, z.w,
-        w.x, w.y, w.z, w.w,
-    );
-}
-
-fn download_texture_content<T: std::fmt::Debug + std::marker::Copy>(
-    device: &sdl3::gpu::Device,
-    texture: &sdl3::gpu::Texture,
-) -> Vec<T> {
-    let download_buffer = device
-        .create_transfer_buffer()
-        .with_size(1_024 * 1_024)
-        .build()
-        .unwrap();
-    let vertex_data_download = device.acquire_command_buffer().unwrap();
-    {
-        let copy_pass = device.begin_copy_pass(&vertex_data_download).unwrap();
-        unsafe {
-            SDL_DownloadFromGPUTexture(
-                copy_pass.raw(),
-                &SDL_GPUTextureRegion {
-                    texture: texture.raw(),
-                    mip_level: 0,
-                    layer: 0,
-                    x: 0,
-                    y: 0,
-                    z: 0,
-                    w: 0,
-                    h: 0,
-                    d: 0,
-                },
-                &SDL_GPUTextureTransferInfo {
-                    transfer_buffer: download_buffer.raw(),
-                    offset: 0,
-                    pixels_per_row: 0,
-                    rows_per_layer: 0,
-                },
-            );
-        }
-        device.end_copy_pass(copy_pass);
-    }
-    let vertex_data_download_fence = vertex_data_download
-        .submit_and_acquire_fence(device)
-        .unwrap();
-    while !vertex_data_download_fence.query(device) {}
-
-    let content = download_buffer.map::<T>(device, false).mem().to_owned();
-    content
-}
-
-// -- vertex and mesh stuff --
-
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
 #[repr(C)]
-struct Vertex {
+/// aligned vertex data for the vertex shader
+struct GpuVertex {
     position: Vec4,
     color: Vec4,
     normal: Vec4,
 }
-impl Vertex {
-    const ATTRIBUTE_COUNT: u32 = 3;
-
+impl GpuVertex {
     fn get_attributes(buffer_slot: u32, first_location: u32) -> Vec<VertexAttribute> {
         vec![
             VertexAttribute::new()
@@ -468,100 +393,95 @@ impl Vertex {
     }
 }
 
-/// do not store more than u32::MAX
-#[derive(Debug, Clone)]
-struct Mesh {
-    vertexes: Vec<Vertex>,
-    indexes: Vec<u32>,
-}
-impl Mesh {
-    fn new_empty() -> Mesh {
-        Mesh {
-            vertexes: vec![],
-            indexes: vec![],
+mod mesh {
+    use glam::{vec3, Mat4, Vec4};
+
+    /// (do not store more than u32::MAX)
+    #[derive(Debug, Clone)]
+    pub struct Mesh {
+        pub vertexes: Vec<super::GpuVertex>,
+        pub indexes: Vec<u32>,
+    }
+    impl Mesh {
+        pub fn new_empty() -> Mesh {
+            Mesh {
+                vertexes: vec![],
+                indexes: vec![],
+            }
+        }
+        pub fn append(&mut self, other: &mut Mesh) {
+            other
+                .indexes
+                .iter_mut()
+                .for_each(|i| *i += self.vertexes.len() as u32);
+            self.vertexes.append(&mut other.vertexes);
+            self.indexes.append(&mut other.indexes);
+        }
+        pub fn transform(&mut self, m: Mat4) {
+            self.vertexes.iter_mut().for_each(|v| {
+                v.position = m * v.position;
+                v.normal = m * v.normal
+            });
         }
     }
-    fn len(&self) -> u32 {
-        self.indexes.len() as u32
-    }
-    fn append(&mut self, other: &mut Mesh) {
-        other
-            .indexes
-            .iter_mut()
-            .for_each(|i| *i += self.vertexes.len() as u32);
-        self.vertexes.append(&mut other.vertexes);
-        self.indexes.append(&mut other.indexes);
-    }
-    fn transform(&mut self, m: Mat4) {
-        self.vertexes.iter_mut().for_each(|v| {
-            v.position = m * v.position;
-            v.normal = m * v.normal
-        });
-    }
-    fn vertexes_bytes_size(&self) -> u32 {
-        size_of_val(self.vertexes.as_slice()) as u32
-    }
-    fn indexes_bytes_size(&self) -> u32 {
-        size_of_val(self.indexes.as_slice()) as u32
-    }
-}
 
-fn cube_mesh() -> Mesh {
-    use std::f32::consts::{FRAC_PI_2, PI};
+    pub fn cube() -> Mesh {
+        use std::f32::consts::{FRAC_PI_2, PI};
 
-    let mut plus_z_face = {
-        let vertex_positions = [
-            [-0.5, -0.5, 0.0, 1.0],
-            [0.5, -0.5, 0.0, 1.0],
-            [-0.5, 0.5, 0.0, 1.0],
-            [0.5, 0.5, 0.0, 1.0],
+        let mut plus_z_face = {
+            let vertex_positions = [
+                [-0.5, -0.5, 0.0, 1.0],
+                [0.5, -0.5, 0.0, 1.0],
+                [-0.5, 0.5, 0.0, 1.0],
+                [0.5, 0.5, 0.0, 1.0],
+            ];
+            let vertex_colors = [
+                [0.0, 1.0, 1.0, 1.0],
+                [0.75, 0.25, 1.0, 1.0],
+                [1.0, 0.5, 0.5, 1.0],
+                [0.75, 1.0, 0.25, 1.0],
+            ];
+            let vertex_normals = [
+                [0.0, 0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0, 1.0],
+            ];
+            let vertexes: Vec<super::GpuVertex> =
+                itertools::izip!(vertex_positions, vertex_colors, vertex_normals)
+                    .map(|(pos_arr, col_arr, norm_arr)| super::GpuVertex {
+                        position: Vec4::from_array(pos_arr),
+                        color: Vec4::from_array(col_arr),
+                        normal: Vec4::from_array(norm_arr),
+                    })
+                    .collect();
+
+            let indexes = vec![0, 1, 3, 3, 2, 0];
+
+            Mesh { vertexes, indexes }
+        };
+        plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
+
+        // relative to the +Z face
+        let transformations = [
+            Mat4::IDENTITY,
+            Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), PI),
+            Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
+            Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), -FRAC_PI_2),
+            Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
+            Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
         ];
-        let vertex_colors = [
-            [0.0, 1.0, 1.0, 1.0],
-            [0.75, 0.25, 1.0, 1.0],
-            [1.0, 0.5, 0.5, 1.0],
-            [0.75, 1.0, 0.25, 1.0],
-        ];
-        let vertex_normals = [
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-        ];
-        let vertexes: Vec<Vertex> =
-            itertools::izip!(vertex_positions, vertex_colors, vertex_normals)
-                .map(|(pos_arr, col_arr, norm_arr)| Vertex {
-                    position: Vec4::from_array(pos_arr),
-                    color: Vec4::from_array(col_arr),
-                    normal: Vec4::from_array(norm_arr),
-                })
-                .collect();
 
-        let indexes = vec![0, 1, 3, 3, 2, 0];
+        let mut cube = Mesh::new_empty();
+        for transform in transformations {
+            let mut next_face = plus_z_face.clone();
+            next_face.transform(transform);
 
-        Mesh { vertexes, indexes }
-    };
-    plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
+            cube.append(&mut next_face);
+        }
 
-    // relative to the +Z face
-    let transformations = [
-        Mat4::IDENTITY,
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), PI),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), -FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
-    ];
-
-    let mut cube = Mesh::new_empty();
-    for transform in transformations {
-        let mut next_face = plus_z_face.clone();
-        next_face.transform(transform);
-
-        cube.append(&mut next_face);
+        cube
     }
-
-    cube
 }
 
 // -- cube animation --
@@ -678,5 +598,57 @@ mod anim {
         } else {
             x * x * (3.0 - 2.0 * x)
         }
+    }
+}
+
+#[allow(dead_code)]
+mod dbgutil {
+    use sdl3::sys::gpu::{
+        SDL_DownloadFromGPUTexture, SDL_GPUTextureRegion, SDL_GPUTextureTransferInfo,
+    };
+
+    pub fn download_texture_content<T: std::fmt::Debug + std::marker::Copy>(
+        device: &sdl3::gpu::Device,
+        texture: &sdl3::gpu::Texture,
+    ) -> Vec<T> {
+        let download_buffer = device
+            .create_transfer_buffer()
+            .with_size(1_024 * 1_024)
+            .build()
+            .unwrap();
+        let vertex_data_download = device.acquire_command_buffer().unwrap();
+        {
+            let copy_pass = device.begin_copy_pass(&vertex_data_download).unwrap();
+            unsafe {
+                SDL_DownloadFromGPUTexture(
+                    copy_pass.raw(),
+                    &SDL_GPUTextureRegion {
+                        texture: texture.raw(),
+                        mip_level: 0,
+                        layer: 0,
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        w: 0,
+                        h: 0,
+                        d: 0,
+                    },
+                    &SDL_GPUTextureTransferInfo {
+                        transfer_buffer: download_buffer.raw(),
+                        offset: 0,
+                        pixels_per_row: 0,
+                        rows_per_layer: 0,
+                    },
+                );
+            }
+            device.end_copy_pass(copy_pass);
+        }
+        let vertex_data_download_fence = vertex_data_download
+            .submit_and_acquire_fence(device)
+            .unwrap();
+        while !vertex_data_download_fence.query(device) {}
+
+        let content = download_buffer.map::<T>(device, false).mem().to_owned();
+        content
     }
 }
