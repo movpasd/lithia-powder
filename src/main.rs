@@ -73,60 +73,14 @@ fn main() {
     let pipeline = prepare_render_pipeline(&device, &window);
 
     // mesh data upload
-    let mesh_buf_entries: Vec<(u32, u32, i32)> /* vec[(first_index, num_indices, vertex_offset)] */ = {
-        // accumulate data into local byte array, keeping track of entries
-        let mut vbuf_data: Vec<u8> = vec![];
-        let mut ibuf_data: Vec<u8> = vec![];
-        let mut buffer_entries = vec![];
-        let mut next_first_index: u32 = 0;
-        let mut next_vertex_offset: i32 = 0;
-        for mesh in &meshes {
-            let gpu_vertexes: Vec<_> = mesh.vertexes.iter().map(GpuVertex::from_mesh_vertex).collect();
-
-            let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
-            vbuf_data.extend_from_slice(vbytes);
-            let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
-            ibuf_data.extend_from_slice(ibytes);
-
-            let mesh_index_count = mesh.indexes.len() as u32;
-            let mesh_vertex_count = mesh.vertexes.len() as i32;
-            let entry = (next_first_index, mesh_index_count, next_vertex_offset);
-            buffer_entries.push(entry);
-            next_first_index += mesh_index_count;
-            next_vertex_offset += mesh_vertex_count;
-        }
-        {
-
-            gpu_resources.tbuf1.map(&device, true).mem_mut()[0..vbuf_data.len()]
-                .copy_from_slice(&vbuf_data);
-            gpu_resources.tbuf2.map(&device, true).mem_mut()[0..ibuf_data.len()]
-                .copy_from_slice(&ibuf_data);
-
-            let data_upload = device.acquire_command_buffer().unwrap();
-            {
-                let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
-                copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&gpu_resources.tbuf1),
-                    BufferRegion::new()
-                        .with_buffer(&gpu_resources.mesh_vbuf)
-                        .with_size(gpu_resources.mesh_vbuf.len()),
-                    true,
-                );
-                copy_pass.upload_to_gpu_buffer(
-                    TransferBufferLocation::new().with_transfer_buffer(&gpu_resources.tbuf2),
-                    BufferRegion::new()
-                        .with_buffer(&gpu_resources.mesh_ibuf)
-                        .with_size(gpu_resources.mesh_ibuf.len()),
-                    true,
-                );
-                device.end_copy_pass(copy_pass);
-            }
-            let data_upload_fence = data_upload.submit_and_acquire_fence(&device).unwrap();
-            while !data_upload_fence.query(&device) {}
-        }
-
-        buffer_entries
-    };
+    let mesh_buf_entries = upload_mesh_data(
+        &device,
+        &meshes,
+        &gpu_resources.tbuf1,
+        &gpu_resources.tbuf2,
+        &gpu_resources.mesh_vbuf,
+        &gpu_resources.mesh_ibuf,
+    );
 
     // event loop
     let start_time = Instant::now();
@@ -218,8 +172,14 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
-                for (&(ibuf_offset, ibuf_count, vbuf_offset), pose) in
-                    itertools::izip![mesh_buf_entries.iter(), poses.iter()]
+                for (
+                    &MeshBufferEntry {
+                        first_index: ibuf_offset,
+                        num_indices: ibuf_count,
+                        vertex_offset: vbuf_offset,
+                    },
+                    pose,
+                ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
                     let vunif_transforms_data = [
                         view,
@@ -388,6 +348,81 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
         )
         .build()
         .unwrap()
+}
+
+struct MeshBufferEntry {
+    first_index: u32,
+    num_indices: u32,
+    vertex_offset: i32,
+}
+
+/// runs a copy pass to upload the data from `meshes` to mesh_vbuf and mesh_ibuf using
+/// the given transfer buffers, returning location information for each mesh
+fn upload_mesh_data(
+    device: &Device,
+    meshes: &[mesh::Mesh<Vec4>],
+    tbuf1: &TransferBuffer,
+    tbuf2: &TransferBuffer,
+    mesh_vbuf: &Buffer,
+    mesh_ibuf: &Buffer,
+) -> Vec<MeshBufferEntry> {
+    // accumulate data into local byte array, keeping track of entries
+    let mut vbuf_data: Vec<u8> = vec![];
+    let mut ibuf_data: Vec<u8> = vec![];
+    let mut buffer_entries = vec![];
+    let mut next_first_index: u32 = 0;
+    let mut next_vertex_offset: i32 = 0;
+    for mesh in meshes {
+        let gpu_vertexes: Vec<_> = mesh
+            .vertexes
+            .iter()
+            .map(GpuVertex::from_mesh_vertex)
+            .collect();
+
+        let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
+        vbuf_data.extend_from_slice(vbytes);
+        let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
+        ibuf_data.extend_from_slice(ibytes);
+
+        let mesh_index_count = mesh.indexes.len() as u32;
+        let mesh_vertex_count = mesh.vertexes.len() as i32;
+        let entry = MeshBufferEntry {
+            first_index: next_first_index,
+            num_indices: mesh_index_count,
+            vertex_offset: next_vertex_offset,
+        };
+        buffer_entries.push(entry);
+        next_first_index += mesh_index_count;
+        next_vertex_offset += mesh_vertex_count;
+    }
+    {
+        tbuf1.map(device, true).mem_mut()[0..vbuf_data.len()].copy_from_slice(&vbuf_data);
+        tbuf2.map(device, true).mem_mut()[0..ibuf_data.len()].copy_from_slice(&ibuf_data);
+
+        let data_upload = device.acquire_command_buffer().unwrap();
+        {
+            let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
+            copy_pass.upload_to_gpu_buffer(
+                TransferBufferLocation::new().with_transfer_buffer(tbuf1),
+                BufferRegion::new()
+                    .with_buffer(mesh_vbuf)
+                    .with_size(mesh_vbuf.len()),
+                true,
+            );
+            copy_pass.upload_to_gpu_buffer(
+                TransferBufferLocation::new().with_transfer_buffer(tbuf2),
+                BufferRegion::new()
+                    .with_buffer(mesh_ibuf)
+                    .with_size(mesh_ibuf.len()),
+                true,
+            );
+            device.end_copy_pass(copy_pass);
+        }
+        let data_upload_fence = data_upload.submit_and_acquire_fence(device).unwrap();
+        while !data_upload_fence.query(device) {}
+    }
+
+    buffer_entries
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
