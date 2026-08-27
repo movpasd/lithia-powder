@@ -166,6 +166,8 @@ fn main() {
     let start_time = Instant::now();
     let mut event_pump = sdl.event_pump().unwrap();
     'main_loop: loop {
+        let elapsed_time_secs = (Instant::now() - start_time).as_secs_f32();
+
         for event in event_pump.poll_iter() {
             match event {
                 sdl3::event::Event::Quit { .. }
@@ -185,8 +187,6 @@ fn main() {
 
         // logic
         {
-            let elapsed_time_secs = (Instant::now() - start_time).as_secs_f32();
-
             // camera stuff
             {
                 // SDL_GPU uses DirectX-like convention
