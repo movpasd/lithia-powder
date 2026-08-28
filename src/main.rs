@@ -43,6 +43,9 @@ fn main() {
 
     // camera data
     let mut camera_pos: Vec3;
+    let mut camera_facing: Vec3;
+    let camera_fov = 70.0f32.to_radians();
+    let mut camera_aspect_ratio: f32;
     let mut view: Mat4;
     let mut persp: Mat4;
 
@@ -109,7 +112,6 @@ fn main() {
         {
             // camera stuff
             {
-
                 const ORBIT_PERIOD: f32 = 60.0;
                 const ORBIT_BIRDSEYE_DISTANCE: f32 = 4.5;
                 const ORBIT_HEIGHT: f32 = 1.2;
@@ -117,23 +119,25 @@ fn main() {
                 const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.8);
 
                 let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
-                camera_pos = vec3(
+                let position = vec3(
                     ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
                     ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
                     ORBIT_HEIGHT,
                 );
-                let facing = (CAMERA_LOOK_AT - camera_pos).normalize();
+                let facing = (CAMERA_LOOK_AT - position).normalize();
 
+                let (width, height) = window.size();
+                let aspect_ratio = width as f32 / height as f32;
+
+                camera_pos = position;
+                camera_facing = facing;
+                camera_aspect_ratio = aspect_ratio;
+            }
+            {
                 // SDL_GPU uses DirectX-like convention
                 use glam::camera::rh::{proj::directx::perspective, view::look_to_mat4};
-                let (width, height) = window.size();
-                persp = perspective(
-                    70.0f32.to_radians(),
-                    width as f32 / height as f32,
-                    0.1,
-                    200.0,
-                );
-                view = look_to_mat4(camera_pos, facing, vec3(0.0, 0.0, 1.0));
+                persp = perspective(camera_fov, camera_aspect_ratio, 0.1, 200.0);
+                view = look_to_mat4(camera_pos, camera_facing, vec3(0.0, 0.0, 1.0));
             }
 
             // cube animation
