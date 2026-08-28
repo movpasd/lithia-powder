@@ -1,8 +1,6 @@
 #version 460 core
 #pragma shader_stage(fragment)
 
-#define TAU 6.28318530717958647692
-
 layout(std140, set = 3, binding = 0) uniform UCamera {
     vec4 worldPosition;
     mat4 view;
