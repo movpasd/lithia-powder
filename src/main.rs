@@ -15,6 +15,7 @@ use sdl3::{
     keyboard::Keycode,
     pixels::Color,
     video::Window,
+    Sdl,
 };
 
 const EMPTY_C_STRING: &CStr = c"";
@@ -49,40 +50,17 @@ fn main() {
         aspect_ratio: 1920.0 / 1080.0,
     };
 
-    // window setup
-    let video_sys = sdl.video().unwrap();
-    let window = video_sys
-        .window("lithia-powder", 980, 640)
-        .position_centered()
-        .resizable()
-        .build()
-        .unwrap();
-
-    // GPU setup
-    let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, true).unwrap();
-    device = device.with_window(&window).unwrap();
-    unsafe {
-        let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(device.raw());
-        let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(
-            properties,
-            sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING,
-            EMPTY_C_STRING.as_ptr(),
-        ));
-        println!("{property_value:?}");
-    }
-
-    // GPU declarations
-    let mut gpu_resources = prepare_gpu_resources(&device);
-    let pipeline = prepare_render_pipeline(&device, &window);
+    // GPU resources and declaration
+    let mut gfx_state = GfxState::new(&sdl);
 
     // mesh data upload
     let mesh_buf_entries = upload_mesh_data(
-        &device,
+        &gfx_state.device,
         &meshes,
-        &gpu_resources.tbuf1,
-        &gpu_resources.tbuf2,
-        &gpu_resources.mesh_vbuf,
-        &gpu_resources.mesh_ibuf,
+        &gfx_state.tbuf1,
+        &gfx_state.tbuf2,
+        &gfx_state.mesh_vbuf,
+        &gfx_state.mesh_ibuf,
     );
 
     // event loop
@@ -126,7 +104,7 @@ fn main() {
                 );
                 let facing = (CAMERA_LOOK_AT - position).normalize();
 
-                let (width, height) = window.size();
+                let (width, height) = gfx_state.window.size();
                 let aspect_ratio = width as f32 / height as f32;
 
                 camera.position = position;
@@ -140,26 +118,29 @@ fn main() {
 
         // render
         {
-            let mut cbuf = device.acquire_command_buffer().unwrap();
+            let mut cbuf = gfx_state.device.acquire_command_buffer().unwrap();
 
             let color_target_info = {
                 // need to grab screen texture and convert it to a color target _first_,
                 // because .wait_and_acquire_swapchain_texture() takes cbuf as &mut (for
                 // seemingly no reason nor safety improvement)
-                let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
+                let screen_texture = cbuf
+                    .wait_and_acquire_swapchain_texture(&gfx_state.window)
+                    .unwrap();
                 ColorTargetInfo::default()
                     .with_texture(&screen_texture)
                     .with_load_op(LoadOp::CLEAR)
                     .with_clear_color(Color::RGB(127, 127, 127))
             };
 
-            let render_pass = device
+            let render_pass = gfx_state
+                .device
                 .begin_render_pass(
                     &cbuf,
                     &[color_target_info],
                     Some(
                         &DepthStencilTargetInfo::new()
-                            .with_texture(&mut gpu_resources.dbuf)
+                            .with_texture(&mut gfx_state.dbuf)
                             .with_clear_depth(1.0)
                             .with_load_op(LoadOp::CLEAR)
                             .with_store_op(StoreOp::DONT_CARE)
@@ -170,13 +151,13 @@ fn main() {
                 )
                 .unwrap();
             {
-                render_pass.bind_graphics_pipeline(&pipeline);
+                render_pass.bind_graphics_pipeline(&gfx_state.pipeline);
                 render_pass.bind_vertex_buffers(
                     0,
-                    &[BufferBinding::new().with_buffer(&gpu_resources.mesh_vbuf)],
+                    &[BufferBinding::new().with_buffer(&gfx_state.mesh_vbuf)],
                 );
                 render_pass.bind_index_buffer(
-                    &BufferBinding::new().with_buffer(&gpu_resources.mesh_ibuf),
+                    &BufferBinding::new().with_buffer(&gfx_state.mesh_ibuf),
                     IndexElementSize::_32BIT,
                 );
 
@@ -206,7 +187,7 @@ fn main() {
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
                 }
             }
-            device.end_render_pass(render_pass);
+            gfx_state.device.end_render_pass(render_pass);
 
             cbuf.submit().unwrap();
         }
@@ -215,56 +196,87 @@ fn main() {
     }
 }
 
-struct GpuResources {
+struct GfxState {
+    window: Window,
+    device: Device,
+    pipeline: GraphicsPipeline,
     mesh_vbuf: Buffer,
     mesh_ibuf: Buffer,
     dbuf: Texture<'static>,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
 }
+impl GfxState {
+    fn new(sdl: &Sdl) -> GfxState {
+        // window setup
+        let video_sys = sdl.video().unwrap();
+        let window = video_sys
+            .window("lithia-powder", 980, 640)
+            .position_centered()
+            .resizable()
+            .build()
+            .unwrap();
 
-fn prepare_gpu_resources(device: &Device) -> GpuResources {
-    let mesh_vbuf = device
-        .create_buffer()
-        .with_usage(BufferUsageFlags::VERTEX)
-        .with_size(1_024 * 1_024)
-        .build()
-        .unwrap();
-    let mesh_ibuf = device
-        .create_buffer()
-        .with_usage(BufferUsageFlags::INDEX)
-        .with_size(1_024 * 1_024)
-        .build()
-        .unwrap();
-    let dbuf = device
-        .create_texture(
-            TextureCreateInfo::new()
-                .with_type(TextureType::_2D)
-                .with_format(TextureFormat::D16Unorm)
-                .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
-                .with_width(1920)
-                .with_height(1080)
-                .with_layer_count_or_depth(1)
-                .with_num_levels(1)
-                .with_sample_count(SampleCount::NoMultiSampling),
-        )
-        .unwrap();
-    let tbuf1 = device
-        .create_transfer_buffer()
-        .with_size(mesh_vbuf.len())
-        .build()
-        .unwrap();
-    let tbuf2 = device
-        .create_transfer_buffer()
-        .with_size(mesh_ibuf.len())
-        .build()
-        .unwrap();
-    GpuResources {
-        mesh_vbuf,
-        mesh_ibuf,
-        dbuf,
-        tbuf1,
-        tbuf2,
+        // GPU setup
+        let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, true).unwrap();
+        device = device.with_window(&window).unwrap();
+        unsafe {
+            let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(device.raw());
+            let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(
+                properties,
+                sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING,
+                EMPTY_C_STRING.as_ptr(),
+            ));
+            println!("{property_value:?}");
+        }
+
+        // resource definition
+        let pipeline = prepare_render_pipeline(&device, &window);
+        let mesh_vbuf = device
+            .create_buffer()
+            .with_usage(BufferUsageFlags::VERTEX)
+            .with_size(1_024 * 1_024)
+            .build()
+            .unwrap();
+        let mesh_ibuf = device
+            .create_buffer()
+            .with_usage(BufferUsageFlags::INDEX)
+            .with_size(1_024 * 1_024)
+            .build()
+            .unwrap();
+        let dbuf = device
+            .create_texture(
+                TextureCreateInfo::new()
+                    .with_type(TextureType::_2D)
+                    .with_format(TextureFormat::D16Unorm)
+                    .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
+                    .with_width(1920)
+                    .with_height(1080)
+                    .with_layer_count_or_depth(1)
+                    .with_num_levels(1)
+                    .with_sample_count(SampleCount::NoMultiSampling),
+            )
+            .unwrap();
+        let tbuf1 = device
+            .create_transfer_buffer()
+            .with_size(mesh_vbuf.len())
+            .build()
+            .unwrap();
+        let tbuf2 = device
+            .create_transfer_buffer()
+            .with_size(mesh_ibuf.len())
+            .build()
+            .unwrap();
+        GfxState {
+            window,
+            device,
+            pipeline,
+            mesh_vbuf,
+            mesh_ibuf,
+            dbuf,
+            tbuf1,
+            tbuf2,
+        }
     }
 }
 
