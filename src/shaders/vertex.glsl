@@ -1,12 +1,14 @@
 #version 460 core
 #pragma shader_stage(vertex)
 
-layout(std140, set = 1, binding = 0) uniform U_Transforms {
-    mat4 u_view;
-    mat4 u_persp;
-    mat4 u_translation;
-    mat4 u_rotation;
-};
+layout(std140, set = 1, binding = 0) uniform UCamera {
+    vec4 worldPosition;
+    mat4 view;
+    mat4 viewPerspective;
+} uCamera;
+layout(std140, set = 1, binding = 2) uniform UPose {
+    mat4 transform;
+} uPose;
 
 layout(location = 0) in vec4 vModelPosition;
 layout(location = 1) in vec4 vModelNormal;
@@ -20,19 +22,15 @@ layout(location = 3) out vec4 sWorldNormal;
 const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
 void main() {
-    // vec4 uCamera_worldPosition = ;
-    mat4 uCamera_view = u_view;
-    mat4 uCamera_viewPerspective = u_persp * u_view;
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
-    mat4 uPose_transform = u_translation * u_rotation;
 
     // ---
 
     sColor = vColor;
 
-    vec4 worldPosition = uPose_transform * vModelPosition;
-    vec4 worldNormal = uPose_transform * vModelNormal;
-    vec4 clipPosition = uCamera_viewPerspective * worldPosition;
+    vec4 worldPosition = uPose.transform * vModelPosition;
+    vec4 worldNormal = uPose.transform * vModelNormal;
+    vec4 clipPosition = uCamera.viewPerspective * worldPosition;
     gl_Position = clipPosition;
     sWorldPosition = worldPosition;
     sWorldNormal = worldNormal;

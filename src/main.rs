@@ -189,15 +189,24 @@ fn main() {
                     pose,
                 ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
-                    let vunif_transforms_data = [
-                        camera.view(),
-                        camera.perspective(),
-                        Mat4::from_translation(pose.pos),
-                        Mat4::from_quat(pose.rot),
-                    ];
+                    const VUNIF_SIZE: usize =
+                        size_of::<Vec4>() + size_of::<Mat4>() + size_of::<Mat4>();
+                    let vunif_camera = {
+                        let mut buf = [0u8; VUNIF_SIZE];
+                        buf[0..16]
+                            .copy_from_slice(bytemuck::bytes_of(&camera.position.extend(1.0)));
+                        buf[16..80].copy_from_slice(bytemuck::bytes_of(&camera.view()));
+                        buf[80..144].copy_from_slice(bytemuck::bytes_of(
+                            &(camera.perspective() * camera.view()),
+                        ));
+                        buf
+                    };
+                    cbuf.push_vertex_uniform_data(0, &vunif_camera);
+                    let pose_transform = Mat4::from_rotation_translation(pose.rot, pose.pos);
+                    cbuf.push_vertex_uniform_data(2, &pose_transform);
+
                     let funif_camera_data =
                         [camera.position.x, camera.position.y, camera.position.z, 1.0];
-                    cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
                     cbuf.push_fragment_uniform_data(0, &funif_camera_data);
 
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
@@ -293,7 +302,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
                 vertex_ir.as_binary_u8(),
                 ShaderStage::Vertex,
             )
-            .with_uniform_buffers(1)
+            .with_uniform_buffers(3)
             .build()
             .unwrap();
 
