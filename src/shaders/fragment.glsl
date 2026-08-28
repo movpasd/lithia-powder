@@ -17,26 +17,42 @@ layout(location = 0) out vec4 ca_color;
 
 const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
+
+const float AMBIENT_ILLUMINATION = 0.33;
+const float FULLY_LIT_MULTIPLIER = 1.4;
+
+const float GLARE_ANGLE = radians(15.0);
+const float GLARE_MULTIPLIER = 0.75;
+
 void main() {
-    float fullyUnlitFactor = 0.45;
-    float fullyUnlitThreshold = 0.33;
-    float fullyLitFactor = 1.3;
-    float fullyLitThreshold = 1.0;
 
-    float scaledLightingFactor = pow(si_lighting, 0.85);
-    float slope = (fullyLitFactor - fullyUnlitFactor) / (fullyLitThreshold - fullyUnlitThreshold);
-    float lightingFactorUnclamped = fullyUnlitFactor + (scaledLightingFactor - fullyUnlitThreshold) * slope;
-    float lightingFactor = clamp(lightingFactorUnclamped, fullyUnlitFactor, fullyLitFactor);
+    vec4 uCamera_worldPosition = u_cameraWorldPos;
+    // mat4 uCamera_view = ;
+    // mat4 uCamera_viewPerspective = ;
+    vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
 
-    vec3 lightReflectDir = 2.0 * dot(lightDir, si_worldNormal) * si_worldNormal - lightDir;
-    lightReflectDir = normalize(lightReflectDir);
-    float glareAngle = acos(dot(lightReflectDir, normalize(u_cameraWorldPos.xyz - si_worldPos)));
-    float glareFactor;
-    if (glareAngle < radians(15.0)) {
-        glareFactor = pow(1.0 - glareAngle / radians(15.0), 3.0);
-    } else {
-        glareFactor = 0.0;
-    }
+    vec4 sColor = si_color;
+    float sLampIllumination = si_lighting;
+    vec4 sWorldPosition = vec4(si_worldPos, 1.0);
+    vec4 sWorldNormal = vec4(si_worldNormal, 0.0);
 
-    ca_color = si_color * lightingFactor + 0.75 * glareFactor;
+    vec4 fColor;
+
+    // ---
+
+    float finalIllumination = max(AMBIENT_ILLUMINATION, sLampIllumination);
+    float lightingMultiplier = FULLY_LIT_MULTIPLIER * pow(finalIllumination, 0.85);
+
+    vec4 lampReflectionDir =
+        2.0 * dot(uLamp_fromDirection, sWorldNormal) * sWorldNormal
+        - uLamp_fromDirection;
+    vec4 fragToCameraDir = normalize(uCamera_worldPosition - sWorldPosition);
+    float angleFromReflection = acos(dot(lampReflectionDir, fragToCameraDir));
+    float glare = max(0.0, 1.0 - angleFromReflection / GLARE_ANGLE);
+
+    fColor = sColor * lightingMultiplier + GLARE_MULTIPLIER * glare;
+
+    // ---
+
+    ca_color = fColor;
 }
