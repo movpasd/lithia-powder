@@ -180,6 +180,15 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
+                let u_camera = UCamera::from_camera(&camera);
+                let u_lamp = ULamp {
+                    from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
+                };
+                cbuf.push_vertex_uniform_data(0, &u_camera);
+                cbuf.push_vertex_uniform_data(1, &u_lamp);
+                cbuf.push_fragment_uniform_data(0, &u_camera);
+                cbuf.push_fragment_uniform_data(1, &u_lamp);
+
                 for (
                     &MeshBufferEntry {
                         first_index: ibuf_offset,
@@ -189,20 +198,10 @@ fn main() {
                     pose,
                 ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
-                    let u_camera = UCamera::from_camera(&camera);
-                    let u_lamp = ULamp {
-                        from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
-                    };
                     let u_pose = UPose {
                         transform: pose.transform(),
                     };
-
-                    cbuf.push_vertex_uniform_data(0, &u_camera);
-                    cbuf.push_vertex_uniform_data(1, &u_lamp);
                     cbuf.push_vertex_uniform_data(2, &u_pose);
-
-                    cbuf.push_fragment_uniform_data(0, &u_camera);
-                    cbuf.push_fragment_uniform_data(1, &u_lamp);
 
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
                 }
