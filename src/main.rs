@@ -48,8 +48,6 @@ fn main() {
         fov: 70.0f32.to_radians(),
         aspect_ratio: 1920.0 / 1080.0,
     };
-    let mut view: Mat4;
-    let mut persp: Mat4;
 
     // window setup
     let video_sys = sdl.video().unwrap();
@@ -135,12 +133,6 @@ fn main() {
                 camera.facing = facing;
                 camera.aspect_ratio = aspect_ratio;
             }
-            {
-                // SDL_GPU uses DirectX-like convention
-                use glam::camera::rh::{proj::directx::perspective, view::look_to_mat4};
-                persp = perspective(camera.fov, camera.aspect_ratio, 0.1, 200.0);
-                view = look_to_mat4(camera.position, camera.facing, vec3(0.0, 0.0, 1.0));
-            }
 
             // cube animation
             poses[0] = anim::pose(elapsed_time_secs);
@@ -198,8 +190,8 @@ fn main() {
                 ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
                     let vunif_transforms_data = [
-                        view,
-                        persp,
+                        camera.view(),
+                        camera.perspective(),
                         Mat4::from_translation(pose.pos),
                         Mat4::from_quat(pose.rot),
                     ];
@@ -485,6 +477,15 @@ struct Camera {
     facing: Vec3,
     fov: f32,
     aspect_ratio: f32,
+}
+impl Camera {
+    fn perspective(&self) -> Mat4 {
+        // nb: SDL_GPU uses DirectX-like convention
+        glam::camera::rh::proj::directx::perspective(self.fov, self.aspect_ratio, 0.1, 200.0)
+    }
+    fn view(&self) -> Mat4 {
+        glam::camera::rh::view::look_to_mat4(self.position, self.facing, vec3(0.0, 0.0, 1.0))
+    }
 }
 
 mod meshobj {
