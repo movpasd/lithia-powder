@@ -3,9 +3,11 @@
 
 #define TAU 6.28318530717958647692
 
-layout(std140, set = 3, binding = 0) uniform U_Camera {
-    vec4 u_cameraWorldPos;
-};
+layout(std140, set = 3, binding = 0) uniform UCamera {
+    vec4 worldPosition;
+    mat4 view;
+    mat4 viewPerspective;
+} uCamera;
 
 layout(location = 0) in vec4 sColor;
 layout(location = 1) in float sLampIllumination;
@@ -25,9 +27,6 @@ const float GLARE_MULTIPLIER = 0.75;
 
 void main() {
 
-    vec4 uCamera_worldPosition = u_cameraWorldPos;
-    // mat4 uCamera_view = ;
-    // mat4 uCamera_viewPerspective = ;
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
 
     // ---
@@ -38,7 +37,7 @@ void main() {
     vec4 lampReflectionDir =
         2.0 * dot(uLamp_fromDirection, sWorldNormal) * sWorldNormal
         - uLamp_fromDirection;
-    vec4 fragToCameraDir = normalize(uCamera_worldPosition - sWorldPosition);
+    vec4 fragToCameraDir = normalize(uCamera.worldPosition - sWorldPosition);
     float angleFromReflection = acos(dot(lampReflectionDir, fragToCameraDir));
     float glare = max(0.0, 1.0 - angleFromReflection / GLARE_ANGLE);
 
