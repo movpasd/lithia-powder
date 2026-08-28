@@ -189,20 +189,13 @@ fn main() {
                     pose,
                 ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
-                    let u_camera = {
-                        const VUNIF_SIZE: usize =
-                            size_of::<Vec4>() + size_of::<Mat4>() + size_of::<Mat4>();
-                        let mut buf = [0u8; VUNIF_SIZE];
-                        buf[0..16]
-                            .copy_from_slice(bytemuck::bytes_of(&camera.position.extend(1.0)));
-                        buf[16..80].copy_from_slice(bytemuck::bytes_of(&camera.view()));
-                        buf[80..144].copy_from_slice(bytemuck::bytes_of(
-                            &(camera.perspective() * camera.view()),
-                        ));
-                        buf
+                    let u_camera = UCamera::from_camera(&camera);
+                    let u_lamp = ULamp {
+                        from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
                     };
-                    let u_lamp = vec4(-3.0, 0.0, 1.0, 0.0).normalize();
-                    let u_pose = pose.transform();
+                    let u_pose = UPose {
+                        transform: pose.transform(),
+                    };
 
                     cbuf.push_vertex_uniform_data(0, &u_camera);
                     cbuf.push_vertex_uniform_data(1, &u_lamp);
@@ -497,6 +490,35 @@ impl Camera {
     fn view(&self) -> Mat4 {
         glam::camera::rh::view::look_to_mat4(self.position, self.facing, vec3(0.0, 0.0, 1.0))
     }
+}
+
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct UCamera {
+    world_position: Vec4,
+    view: Mat4,
+    view_perspective: Mat4,
+}
+impl UCamera {
+    fn from_camera(camera: &Camera) -> Self {
+        let perspective = camera.perspective();
+        let view = camera.view();
+        Self {
+            world_position: camera.position.extend(1.0),
+            view,
+            view_perspective: perspective * view,
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct ULamp {
+    from_direction: Vec4,
+}
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct UPose {
+    transform: Mat4,
 }
 
 #[derive(Debug, Default)]
