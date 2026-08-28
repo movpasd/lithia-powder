@@ -201,8 +201,7 @@ fn main() {
             }
             device.end_render_pass(render_pass);
 
-            let fence = cbuf.submit_and_acquire_fence(&device).unwrap();
-            while !fence.query(&device) {}
+            cbuf.submit().unwrap();
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
