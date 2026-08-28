@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, ffi::CStr, time::Instant};
 
-use glam::{Mat4, Quat, Vec3, Vec4, vec3, vec4};
+use glam::{vec3, vec4, Mat4, Quat, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -31,12 +31,12 @@ fn main() {
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
         anim::Pose {
-            pos: vec3(-3.0, 0.0, 0.0),
-            rot: Quat::default(),
+            position: vec3(-3.0, 0.0, 0.0),
+            rotation: Quat::default(),
         },
         anim::Pose {
-            pos: vec3(-1.5, 3.0, 0.0),
-            rot: Quat::default(),
+            position: vec3(-1.5, 3.0, 0.0),
+            rotation: Quat::default(),
         },
     ];
     assert!(meshes.len() == poses.len());
@@ -202,7 +202,7 @@ fn main() {
                         buf
                     };
                     let u_lamp = vec4(-3.0, 0.0, 1.0, 0.0).normalize();
-                    let u_pose = Mat4::from_rotation_translation(pose.rot, pose.pos);
+                    let u_pose = pose.transform();
 
                     cbuf.push_vertex_uniform_data(0, &u_camera);
                     cbuf.push_vertex_uniform_data(1, &u_lamp);
@@ -606,7 +606,7 @@ mod anim {
         ops::{Add, Mul},
     };
 
-    use glam::{vec3, Quat, Vec3};
+    use glam::{vec3, Mat4, Quat, Vec3};
 
     const WAIT_TIME: f32 = 1.5;
     const MOVE_TIME: f32 = 0.5;
@@ -632,8 +632,13 @@ mod anim {
 
     #[derive(Debug, Default)]
     pub struct Pose {
-        pub pos: Vec3,
-        pub rot: Quat,
+        pub position: Vec3,
+        pub rotation: Quat,
+    }
+    impl Pose {
+        pub fn transform(&self) -> Mat4 {
+            Mat4::from_rotation_translation(self.rotation, self.position)
+        }
     }
 
     pub fn pose(t: f32) -> Pose {
@@ -691,7 +696,10 @@ mod anim {
         };
         let rot = Quat::from_rotation_x(angle);
 
-        Pose { pos, rot }
+        Pose {
+            position: pos,
+            rotation: rot,
+        }
     }
 
     fn lerp<T: Mul<f32, Output = T> + Add<T, Output = T>>(a: T, b: T, x: f32) -> T {
