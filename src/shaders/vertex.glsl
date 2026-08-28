@@ -8,9 +8,9 @@ layout(std140, set = 1, binding = 0) uniform U_Transforms {
     mat4 u_rotation;
 };
 
-layout(location = 0) in vec4 va_position;
-layout(location = 1) in vec4 va_color;
-layout(location = 2) in vec4 va_normal;
+layout(location = 0) in vec4 vModelPosition;
+layout(location = 1) in vec4 vModelNormal;
+layout(location = 2) in vec4 vColor;
 
 layout(location = 0) out vec4 so_color;
 layout(location = 1) out float so_lighting;
@@ -27,9 +27,6 @@ void main() {
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
     mat4 uPose_transform = u_translation * u_rotation;
 
-    vec4 vModelPosition = va_position;
-    vec4 vModelNormal = va_normal;
-    vec4 vColor = va_color;
     vec4 sColor;
     float sLampIllumination;
     vec4 sWorldPosition;

@@ -331,7 +331,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
                     .with_slot(0)
                     .with_pitch(size_of::<GpuVertex>() as u32)
                     .with_input_rate(VertexInputRate::Vertex)])
-                .with_vertex_attributes(&GpuVertex::get_attributes(0, 0)),
+                .with_vertex_attributes(&GpuVertex::get_attributes(0)),
         )
         .with_primitive_type(PrimitiveType::TriangleList)
         .with_rasterizer_state(
@@ -438,25 +438,25 @@ fn upload_mesh_data(
 /// aligned vertex data for the vertex shader
 struct GpuVertex {
     position: Vec4,
-    color: Vec4,
-    normal: Vec4,
+    model_normal: Vec4,
+    model_color: Vec4,
 }
 impl GpuVertex {
-    fn get_attributes(buffer_slot: u32, first_location: u32) -> Vec<VertexAttribute> {
+    fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
         vec![
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location)
+                .with_location(0)
                 .with_offset(0)
                 .with_format(VertexElementFormat::Float4),
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location + 1)
+                .with_location(1)
                 .with_offset(16)
                 .with_format(VertexElementFormat::Float4),
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location + 2)
+                .with_location(2)
                 .with_offset(32)
                 .with_format(VertexElementFormat::Float4),
         ]
@@ -465,8 +465,8 @@ impl GpuVertex {
     fn from_mesh_vertex(v: &meshobj::Vertex<Vec4>) -> Self {
         Self {
             position: v.position,
-            color: v.data,
-            normal: v.normal,
+            model_color: v.data,
+            model_normal: v.normal,
         }
     }
 }
