@@ -7,11 +7,10 @@ layout(std140, set = 3, binding = 0) uniform U_Camera {
     vec4 u_cameraWorldPos;
 };
 
-layout(location = 0) in vec4 si_color;
-layout(location = 1) in float si_lighting;
-
-layout(location = 2) in vec3 si_worldPos;
-layout(location = 3) in vec3 si_worldNormal;
+layout(location = 0) in vec4 sColor;
+layout(location = 1) in float sLampIllumination;
+layout(location = 2) in vec4 sWorldPosition;
+layout(location = 3) in vec4 sWorldNormal;
 
 layout(location = 0) out vec4 ca_color;
 
@@ -30,11 +29,6 @@ void main() {
     // mat4 uCamera_view = ;
     // mat4 uCamera_viewPerspective = ;
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
-
-    vec4 sColor = si_color;
-    float sLampIllumination = si_lighting;
-    vec4 sWorldPosition = vec4(si_worldPos, 1.0);
-    vec4 sWorldNormal = vec4(si_worldNormal, 0.0);
 
     vec4 fColor;
 

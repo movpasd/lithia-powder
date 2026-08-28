@@ -12,11 +12,10 @@ layout(location = 0) in vec4 vModelPosition;
 layout(location = 1) in vec4 vModelNormal;
 layout(location = 2) in vec4 vColor;
 
-layout(location = 0) out vec4 so_color;
-layout(location = 1) out float so_lighting;
-
-layout(location = 2) out vec3 so_worldPos;
-layout(location = 3) out vec3 so_worldNormal;
+layout(location = 0) out vec4 sColor;
+layout(location = 1) out float sLampIllumination;
+layout(location = 2) out vec4 sWorldPosition;
+layout(location = 3) out vec4 sWorldNormal;
 
 const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
@@ -26,11 +25,6 @@ void main() {
     mat4 uCamera_viewPerspective = u_persp * u_view;
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
     mat4 uPose_transform = u_translation * u_rotation;
-
-    vec4 sColor;
-    float sLampIllumination;
-    vec4 sWorldPosition;
-    vec4 sWorldNormal;
 
     // ---
 
@@ -45,11 +39,4 @@ void main() {
 
     // nb: worldNormal and uLamp.dir assumed to be normalized and w=0
     sLampIllumination = (1.0 + dot(worldNormal, uLamp_fromDirection)) / 2.0;
-
-    // ---
-
-    so_color = sColor;
-    so_lighting = sLampIllumination;
-    so_worldPos = sWorldPosition.xyz;
-    so_worldNormal = sWorldNormal.xyz;
 }
