@@ -42,10 +42,12 @@ fn main() {
     assert!(meshes.len() == poses.len());
 
     // camera data
-    let mut camera_pos: Vec3;
-    let mut camera_facing: Vec3;
-    let camera_fov = 70.0f32.to_radians();
-    let mut camera_aspect_ratio: f32;
+    let mut camera = Camera {
+        position: Vec3::ZERO,
+        facing: vec3(1.0, 0.0, 0.0),
+        fov: 70.0f32.to_radians(),
+        aspect_ratio: 1920.0 / 1080.0,
+    };
     let mut view: Mat4;
     let mut persp: Mat4;
 
@@ -129,15 +131,15 @@ fn main() {
                 let (width, height) = window.size();
                 let aspect_ratio = width as f32 / height as f32;
 
-                camera_pos = position;
-                camera_facing = facing;
-                camera_aspect_ratio = aspect_ratio;
+                camera.position = position;
+                camera.facing = facing;
+                camera.aspect_ratio = aspect_ratio;
             }
             {
                 // SDL_GPU uses DirectX-like convention
                 use glam::camera::rh::{proj::directx::perspective, view::look_to_mat4};
-                persp = perspective(camera_fov, camera_aspect_ratio, 0.1, 200.0);
-                view = look_to_mat4(camera_pos, camera_facing, vec3(0.0, 0.0, 1.0));
+                persp = perspective(camera.fov, camera.aspect_ratio, 0.1, 200.0);
+                view = look_to_mat4(camera.position, camera.facing, vec3(0.0, 0.0, 1.0));
             }
 
             // cube animation
@@ -201,7 +203,8 @@ fn main() {
                         Mat4::from_translation(pose.pos),
                         Mat4::from_quat(pose.rot),
                     ];
-                    let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
+                    let funif_camera_data =
+                        [camera.position.x, camera.position.y, camera.position.z, 1.0];
                     cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
                     cbuf.push_fragment_uniform_data(0, &funif_camera_data);
 
@@ -474,6 +477,14 @@ impl GpuVertex {
             normal: v.normal,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct Camera {
+    position: Vec3,
+    facing: Vec3,
+    fov: f32,
+    aspect_ratio: f32,
 }
 
 mod meshobj {
