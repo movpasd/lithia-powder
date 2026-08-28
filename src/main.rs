@@ -109,9 +109,23 @@ fn main() {
         {
             // camera stuff
             {
-                // SDL_GPU uses DirectX-like convention
-                use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
 
+                const ORBIT_PERIOD: f32 = 60.0;
+                const ORBIT_BIRDSEYE_DISTANCE: f32 = 4.5;
+                const ORBIT_HEIGHT: f32 = 1.2;
+                const ORBIT_PHASE_INIT: f32 = -TAU / 9.0;
+                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.8);
+
+                let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
+                camera_pos = vec3(
+                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
+                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
+                    ORBIT_HEIGHT,
+                );
+                let facing = (CAMERA_LOOK_AT - camera_pos).normalize();
+
+                // SDL_GPU uses DirectX-like convention
+                use glam::camera::rh::{proj::directx::perspective, view::look_to_mat4};
                 let (width, height) = window.size();
                 persp = perspective(
                     70.0f32.to_radians(),
@@ -119,16 +133,7 @@ fn main() {
                     0.1,
                     200.0,
                 );
-                let orbit_period = 60.0;
-                let orbit_distance = 4.5;
-                let orbit_angle = -TAU / 9.0 + TAU * elapsed_time_secs / orbit_period;
-
-                camera_pos = vec3(
-                    orbit_distance * orbit_angle.cos(),
-                    orbit_distance * orbit_angle.sin(),
-                    1.2,
-                );
-                view = look_at_mat4(camera_pos, vec3(0.0, 0.0, 0.8), vec3(0.0, 0.0, 1.0));
+                view = look_to_mat4(camera_pos, facing, vec3(0.0, 0.0, 1.0));
             }
 
             // cube animation
