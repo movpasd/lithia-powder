@@ -28,13 +28,13 @@ fn main() {
         meshobj::colorful_cube(),
         meshobj::colorful_cube(),
     ];
-    let mut poses: Vec<anim::Pose> = vec![
-        anim::Pose::default(),
-        anim::Pose {
+    let mut poses: Vec<Pose> = vec![
+        Pose::default(),
+        Pose {
             position: vec3(-3.0, 0.0, 0.0),
             rotation: Quat::default(),
         },
-        anim::Pose {
+        Pose {
             position: vec3(-1.5, 3.0, 0.0),
             rotation: Quat::default(),
         },
@@ -499,6 +499,17 @@ impl Camera {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Pose {
+    pub position: Vec3,
+    pub rotation: Quat,
+}
+impl Pose {
+    pub fn transform(&self) -> Mat4 {
+        Mat4::from_rotation_translation(self.rotation, self.position)
+    }
+}
+
 mod meshobj {
     use glam::{vec3, Mat4, Vec4};
 
@@ -598,15 +609,13 @@ mod meshobj {
     }
 }
 
-// -- cube animation --
-
 mod anim {
     use std::{
         f32::consts::TAU,
         ops::{Add, Mul},
     };
 
-    use glam::{vec3, Mat4, Quat, Vec3};
+    use glam::{vec3, Quat};
 
     const WAIT_TIME: f32 = 1.5;
     const MOVE_TIME: f32 = 0.5;
@@ -630,18 +639,7 @@ mod anim {
     const H: f32 = 1.0;
     const THETA: f32 = TAU;
 
-    #[derive(Debug, Default)]
-    pub struct Pose {
-        pub position: Vec3,
-        pub rotation: Quat,
-    }
-    impl Pose {
-        pub fn transform(&self) -> Mat4 {
-            Mat4::from_rotation_translation(self.rotation, self.position)
-        }
-    }
-
-    pub fn pose(t: f32) -> Pose {
+    pub fn pose(t: f32) -> super::Pose {
         let t = t % ANIM_TIME;
 
         #[allow(unused_variables)]
@@ -696,7 +694,7 @@ mod anim {
         };
         let rot = Quat::from_rotation_x(angle);
 
-        Pose {
+        super::Pose {
             position: pos,
             rotation: rot,
         }
