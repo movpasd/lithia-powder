@@ -45,7 +45,6 @@ fn main() {
             rotation: Quat::default(),
         },
     ];
-    assert!(meshes.len() == poses.len());
 
     // camera data
     let mut camera = Camera {
@@ -56,7 +55,7 @@ fn main() {
     };
 
     // mesh data upload
-    let mesh_buf_entries = gfx_state.upload_mesh_data(&meshes);
+    gfx_state.update_meshes(&meshes);
 
     // event loop
     let start_time = Instant::now();
@@ -112,80 +111,7 @@ fn main() {
         }
 
         // render
-        {
-            let mut cbuf = gfx_state.device.acquire_command_buffer().unwrap();
-
-            let color_target_info = {
-                // need to grab screen texture and convert it to a color target _first_,
-                // because .wait_and_acquire_swapchain_texture() takes cbuf as &mut (for
-                // seemingly no reason nor safety improvement)
-                let screen_texture = cbuf
-                    .wait_and_acquire_swapchain_texture(&gfx_state.window)
-                    .unwrap();
-                ColorTargetInfo::default()
-                    .with_texture(&screen_texture)
-                    .with_load_op(LoadOp::CLEAR)
-                    .with_clear_color(Color::RGB(127, 127, 127))
-            };
-
-            let render_pass = gfx_state
-                .device
-                .begin_render_pass(
-                    &cbuf,
-                    &[color_target_info],
-                    Some(
-                        &DepthStencilTargetInfo::new()
-                            .with_texture(&mut gfx_state.dbuf)
-                            .with_clear_depth(1.0)
-                            .with_load_op(LoadOp::CLEAR)
-                            .with_store_op(StoreOp::DONT_CARE)
-                            .with_stencil_load_op(LoadOp::DONT_CARE)
-                            .with_stencil_store_op(StoreOp::DONT_CARE)
-                            .with_cycle(true),
-                    ),
-                )
-                .unwrap();
-            {
-                render_pass.bind_graphics_pipeline(&gfx_state.pipeline);
-                render_pass.bind_vertex_buffers(
-                    0,
-                    &[BufferBinding::new().with_buffer(&gfx_state.mesh_vbuf)],
-                );
-                render_pass.bind_index_buffer(
-                    &BufferBinding::new().with_buffer(&gfx_state.mesh_ibuf),
-                    IndexElementSize::_32BIT,
-                );
-
-                let u_camera = UCamera::from_camera(&camera);
-                let u_lamp = ULamp {
-                    from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
-                };
-                cbuf.push_vertex_uniform_data(0, &u_camera);
-                cbuf.push_vertex_uniform_data(1, &u_lamp);
-                cbuf.push_fragment_uniform_data(0, &u_camera);
-                cbuf.push_fragment_uniform_data(1, &u_lamp);
-
-                for (
-                    &MeshBufferEntry {
-                        first_index: ibuf_offset,
-                        num_indices: ibuf_count,
-                        vertex_offset: vbuf_offset,
-                    },
-                    pose,
-                ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
-                {
-                    let u_pose = UPose {
-                        transform: pose.transform(),
-                    };
-                    cbuf.push_vertex_uniform_data(2, &u_pose);
-
-                    render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
-                }
-            }
-            gfx_state.device.end_render_pass(render_pass);
-
-            cbuf.submit().unwrap();
-        }
+        gfx_state.render(&camera, &poses);
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
     }
@@ -200,6 +126,7 @@ struct GfxState {
     dbuf: Texture<'static>,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
+    mesh_buf_entries: Vec<MeshBufferEntry>,
 }
 impl GfxState {
     fn new(sdl: &Sdl) -> GfxState {
@@ -252,6 +179,7 @@ impl GfxState {
             .with_size(mesh_ibuf.len())
             .build()
             .unwrap();
+
         GfxState {
             window,
             device,
@@ -261,6 +189,7 @@ impl GfxState {
             dbuf,
             tbuf1,
             tbuf2,
+            mesh_buf_entries: vec![],
         }
     }
 
@@ -367,11 +296,12 @@ impl GfxState {
             .unwrap()
     }
 
-    fn upload_mesh_data(&self, meshes: &[meshobj::Mesh<Vec4>]) -> Vec<MeshBufferEntry> {
+    /// starts a copy pass
+    fn update_meshes(&mut self, meshes: &[meshobj::Mesh<Vec4>]) {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
-        let mut buffer_entries = vec![];
+        let mut mesh_buf_entries = vec![];
         let mut next_first_index: u32 = 0;
         let mut next_vertex_offset: i32 = 0;
         for mesh in meshes {
@@ -393,7 +323,7 @@ impl GfxState {
                 num_indices: mesh_index_count,
                 vertex_offset: next_vertex_offset,
             };
-            buffer_entries.push(entry);
+            mesh_buf_entries.push(entry);
             next_first_index += mesh_index_count;
             next_vertex_offset += mesh_vertex_count;
         }
@@ -422,11 +352,83 @@ impl GfxState {
                 );
                 self.device.end_copy_pass(copy_pass);
             }
-            let data_upload_fence = data_upload.submit_and_acquire_fence(&self.device).unwrap();
-            while !data_upload_fence.query(&self.device) {}
+            data_upload.submit().unwrap();
         }
 
-        buffer_entries
+        self.mesh_buf_entries = mesh_buf_entries;
+    }
+
+    fn render(&mut self, camera: &Camera, poses: &[Pose]) {
+        let mut cbuf = self.device.acquire_command_buffer().unwrap();
+
+        let color_target_info = {
+            // need to grab screen texture and convert it to a color target _first_,
+            // because .wait_and_acquire_swapchain_texture() takes cbuf as &mut (for
+            // seemingly no reason nor safety improvement)
+            let screen_texture = cbuf
+                .wait_and_acquire_swapchain_texture(&self.window)
+                .unwrap();
+            ColorTargetInfo::default()
+                .with_texture(&screen_texture)
+                .with_load_op(LoadOp::CLEAR)
+                .with_clear_color(Color::RGB(127, 127, 127))
+        };
+
+        let render_pass = self
+            .device
+            .begin_render_pass(
+                &cbuf,
+                &[color_target_info],
+                Some(
+                    &DepthStencilTargetInfo::new()
+                        .with_texture(&mut self.dbuf)
+                        .with_clear_depth(1.0)
+                        .with_load_op(LoadOp::CLEAR)
+                        .with_store_op(StoreOp::DONT_CARE)
+                        .with_stencil_load_op(LoadOp::DONT_CARE)
+                        .with_stencil_store_op(StoreOp::DONT_CARE)
+                        .with_cycle(true),
+                ),
+            )
+            .unwrap();
+        {
+            render_pass.bind_graphics_pipeline(&self.pipeline);
+            render_pass
+                .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.mesh_vbuf)]);
+            render_pass.bind_index_buffer(
+                &BufferBinding::new().with_buffer(&self.mesh_ibuf),
+                IndexElementSize::_32BIT,
+            );
+
+            let u_camera = UCamera::from_camera(camera);
+            let u_lamp = ULamp {
+                from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
+            };
+            cbuf.push_vertex_uniform_data(0, &u_camera);
+            cbuf.push_vertex_uniform_data(1, &u_lamp);
+            cbuf.push_fragment_uniform_data(0, &u_camera);
+            cbuf.push_fragment_uniform_data(1, &u_lamp);
+
+            for (
+                &MeshBufferEntry {
+                    first_index: ibuf_offset,
+                    num_indices: ibuf_count,
+                    vertex_offset: vbuf_offset,
+                },
+                pose,
+            ) in itertools::izip![self.mesh_buf_entries.iter(), poses.iter()]
+            {
+                let u_pose = UPose {
+                    transform: pose.transform(),
+                };
+                cbuf.push_vertex_uniform_data(2, &u_pose);
+
+                render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
+            }
+        }
+        self.device.end_render_pass(render_pass);
+
+        cbuf.submit().unwrap();
     }
 }
 
@@ -520,7 +522,7 @@ struct UPose {
     transform: Mat4,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Pose {
     pub position: Vec3,
     pub rotation: Quat,
