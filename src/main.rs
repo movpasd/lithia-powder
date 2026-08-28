@@ -437,9 +437,9 @@ fn upload_mesh_data(
 #[repr(C)]
 /// aligned vertex data for the vertex shader
 struct GpuVertex {
-    position: Vec4,
+    model_position: Vec4,
     model_normal: Vec4,
-    model_color: Vec4,
+    color: Vec4,
 }
 impl GpuVertex {
     fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
@@ -464,8 +464,8 @@ impl GpuVertex {
 
     fn from_mesh_vertex(v: &meshobj::Vertex<Vec4>) -> Self {
         Self {
-            position: v.position,
-            model_color: v.data,
+            model_position: v.position,
+            color: v.data,
             model_normal: v.normal,
         }
     }
