@@ -34,6 +34,7 @@ void main() {
     vec4 fragToCameraDir = normalize(uCamera.worldPosition - sWorldPosition);
     float angleFromReflection = acos(dot(lampReflectionDir, fragToCameraDir));
     float glare = max(0.0, 1.0 - angleFromReflection / GLARE_ANGLE);
+    glare = pow(glare, 3.0);
 
     fColor = sColor * lightingMultiplier + GLARE_MULTIPLIER * glare;
 }
