@@ -139,11 +139,16 @@ fn main() {
         {
             let mut cbuf = device.acquire_command_buffer().unwrap();
 
-            let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
-            let color_target_info = ColorTargetInfo::default()
-                .with_texture(&screen_texture)
-                .with_load_op(LoadOp::CLEAR)
-                .with_clear_color(Color::RGB(127, 127, 127));
+            let color_target_info = {
+                // need to grab screen texture and convert it to a color target _first_,
+                // because .wait_and_acquire_swapchain_texture() takes cbuf as &mut (for
+                // seemingly no reason nor safety improvement)
+                let screen_texture = cbuf.wait_and_acquire_swapchain_texture(&window).unwrap();
+                ColorTargetInfo::default()
+                    .with_texture(&screen_texture)
+                    .with_load_op(LoadOp::CLEAR)
+                    .with_clear_color(Color::RGB(127, 127, 127))
+            };
 
             let render_pass = device
                 .begin_render_pass(
