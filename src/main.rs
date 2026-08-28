@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, ffi::CStr, time::Instant};
 
-use glam::{vec3, Mat4, Quat, Vec3, Vec4};
+use glam::{vec3, vec4, Mat4, Quat, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
@@ -42,9 +42,7 @@ fn main() {
     assert!(meshes.len() == poses.len());
 
     // camera data
-    let mut camera_pos: Vec3;
-    let mut view: Mat4;
-    let mut persp: Mat4;
+    let mut camera: Camera = Camera::default();
 
     // window setup
     let video_sys = sdl.video().unwrap();
@@ -109,26 +107,22 @@ fn main() {
         {
             // camera stuff
             {
-                // SDL_GPU uses DirectX-like convention
-                use glam::camera::rh::{proj::directx::perspective, view::look_at_mat4};
+                const ORBIT_PERIOD: f32 = 60.0;
+                const ORBIT_BIRDSEYE_DISTANCE: f32 = 4.5;
+                const ORBIT_HEIGHT: f32 = 1.2;
+                const ORBIT_PHASE_INIT: f32 = -TAU / 9.0;
+                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.0);
 
-                let (width, height) = window.size();
-                persp = perspective(
-                    70.0f32.to_radians(),
-                    width as f32 / height as f32,
-                    0.1,
-                    200.0,
+                let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
+                let position = vec3(
+                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
+                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
+                    ORBIT_HEIGHT,
                 );
-                let orbit_period = 60.0;
-                let orbit_distance = 4.5;
-                let orbit_angle = -TAU / 9.0 + TAU * elapsed_time_secs / orbit_period;
+                let facing = (CAMERA_LOOK_AT - position).normalize();
 
-                camera_pos = vec3(
-                    orbit_distance * orbit_angle.cos(),
-                    orbit_distance * orbit_angle.sin(),
-                    1.2,
-                );
-                view = look_at_mat4(camera_pos, vec3(0.0, 0.0, 0.8), vec3(0.0, 0.0, 1.0));
+                camera.position = position;
+                camera.facing = facing;
             }
 
             // cube animation
@@ -177,6 +171,17 @@ fn main() {
                     IndexElementSize::_32BIT,
                 );
 
+                {
+                    let u_camera = UCamera::from_camera(&camera);
+                    let u_lamp = ULamp {
+                        from_direction: vec4(3.0, 3.0, 3.0, 0.0),
+                    };
+                    cbuf.push_vertex_uniform_data(0, &u_camera);
+                    cbuf.push_vertex_uniform_data(1, &u_lamp);
+                    cbuf.push_fragment_uniform_data(0, &u_camera);
+                    cbuf.push_fragment_uniform_data(1, &u_lamp);
+                }
+
                 for (
                     &MeshBufferEntry {
                         first_index: ibuf_offset,
@@ -186,16 +191,12 @@ fn main() {
                     pose,
                 ) in itertools::izip![mesh_buf_entries.iter(), poses.iter()]
                 {
-                    let vunif_transforms_data = [
-                        view,
-                        persp,
-                        Mat4::from_translation(pose.pos),
-                        Mat4::from_quat(pose.rot),
-                    ];
-                    let funif_camera_data = [camera_pos.x, camera_pos.y, camera_pos.z, 1.0];
-                    cbuf.push_vertex_uniform_data(0, &vunif_transforms_data);
-                    cbuf.push_fragment_uniform_data(0, &funif_camera_data);
+                    let u_pose = UPose {
+                        transform: pose.transform(),
+                    };
+                    cbuf.push_vertex_uniform_data(2, &u_pose);
 
+                    // draw
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
                 }
             }
@@ -327,7 +328,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
                     .with_slot(0)
                     .with_pitch(size_of::<GpuVertex>() as u32)
                     .with_input_rate(VertexInputRate::Vertex)])
-                .with_vertex_attributes(&GpuVertex::get_attributes(0, 0)),
+                .with_vertex_attributes(&GpuVertex::get_attributes(0)),
         )
         .with_primitive_type(PrimitiveType::TriangleList)
         .with_rasterizer_state(
@@ -429,30 +430,30 @@ fn upload_mesh_data(
     buffer_entries
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
-#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)] // choice of repr is internal to GpuVertex
 /// aligned vertex data for the vertex shader
 struct GpuVertex {
-    position: Vec4,
+    model_position: Vec4,
+    model_normal: Vec4,
     color: Vec4,
-    normal: Vec4,
 }
 impl GpuVertex {
-    fn get_attributes(buffer_slot: u32, first_location: u32) -> Vec<VertexAttribute> {
+    fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
         vec![
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location)
+                .with_location(0)
                 .with_offset(0)
                 .with_format(VertexElementFormat::Float4),
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location + 1)
+                .with_location(1)
                 .with_offset(16)
                 .with_format(VertexElementFormat::Float4),
             VertexAttribute::new()
                 .with_buffer_slot(buffer_slot)
-                .with_location(first_location + 2)
+                .with_location(2)
                 .with_offset(32)
                 .with_format(VertexElementFormat::Float4),
         ]
@@ -460,11 +461,67 @@ impl GpuVertex {
 
     fn from_mesh_vertex(v: &meshobj::Vertex<Vec4>) -> Self {
         Self {
-            position: v.position,
+            model_position: v.position,
             color: v.data,
-            normal: v.normal,
+            model_normal: v.normal,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct Camera {
+    position: Vec3,
+    facing: Vec3,
+    fov: f32,
+    aspect_ratio: f32,
+}
+impl Camera {
+    fn perspective(&self) -> Mat4 {
+        // nb: SDL_GPU uses DirectX-like convention
+        glam::camera::rh::proj::directx::perspective(self.fov, self.aspect_ratio, 0.1, 200.0)
+    }
+    fn view(&self) -> Mat4 {
+        glam::camera::rh::view::look_to_mat4(self.position, self.facing, vec3(0.0, 0.0, 1.0))
+    }
+}
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            position: Vec3::ZERO,
+            facing: vec3(1.0, 0.0, 0.0),
+            fov: 70.0f32.to_radians(),
+            aspect_ratio: 1920.0 / 1080.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct UCamera {
+    world_position: Vec4,
+    view: Mat4,
+    view_perspective: Mat4,
+}
+impl UCamera {
+    fn from_camera(camera: &Camera) -> Self {
+        let perspective = camera.perspective();
+        let view = camera.view();
+        Self {
+            world_position: camera.position.extend(1.0),
+            view,
+            view_perspective: perspective * view,
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct ULamp {
+    from_direction: Vec4,
+}
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[repr(C)]
+struct UPose {
+    transform: Mat4,
 }
 
 mod meshobj {
@@ -574,7 +631,7 @@ mod anim {
         ops::{Add, Mul},
     };
 
-    use glam::{vec3, Quat, Vec3};
+    use glam::{vec3, Mat4, Quat, Vec3};
 
     const WAIT_TIME: f32 = 1.5;
     const MOVE_TIME: f32 = 0.5;
@@ -602,6 +659,11 @@ mod anim {
     pub struct Pose {
         pub pos: Vec3,
         pub rot: Quat,
+    }
+    impl Pose {
+        pub fn transform(&self) -> Mat4 {
+            Mat4::from_rotation_translation(self.rot, self.pos)
+        }
     }
 
     pub fn pose(t: f32) -> Pose {

@@ -1,36 +1,37 @@
 #version 460 core
 #pragma shader_stage(vertex)
 
-layout(std140, set = 1, binding = 0) uniform U_Transforms {
-    mat4 u_view;
-    mat4 u_persp;
-    mat4 u_translation;
-    mat4 u_rotation;
-};
+layout(std140, set = 1, binding = 0) uniform UCamera {
+    vec4 worldPosition;
+    mat4 view;
+    mat4 viewPerspective;
+} uCamera;
+layout(std140, set = 1, binding = 1) uniform ULamp {
+    vec4 fromDirection;
+} uLamp;
+layout(std140, set = 1, binding = 2) uniform UPose {
+    mat4 transform;
+} uPose;
 
-layout(location = 0) in vec4 va_position;
-layout(location = 1) in vec4 va_color;
-layout(location = 2) in vec4 va_normal;
+layout(location = 0) in vec4 vModelPosition;
+layout(location = 1) in vec4 vModelNormal;
+layout(location = 2) in vec4 vColor;
 
-layout(location = 0) out vec4 so_color;
-layout(location = 1) out float so_lighting;
-
-layout(location = 2) out vec3 so_worldPos;
-layout(location = 3) out vec3 so_worldNormal;
-
-const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
+layout(location = 0) out vec4 sColor;
+layout(location = 1) out float sLampIllumination;
+layout(location = 2) out vec4 sWorldPosition;
+layout(location = 3) out vec4 sWorldNormal;
 
 void main() {
-    vec4 worldPos = u_translation * u_rotation * va_position;
-    vec4 worldNormal = u_rotation * va_normal;
+    sColor = vColor;
 
-    vec4 viewPos = u_view * worldPos;
-    gl_Position = u_persp * viewPos;
-    so_color = va_color;
+    vec4 worldPosition = uPose.transform * vModelPosition;
+    vec4 worldNormal = uPose.transform * vModelNormal;
+    vec4 clipPosition = uCamera.viewPerspective * worldPosition;
+    gl_Position = clipPosition;
+    sWorldPosition = worldPosition;
+    sWorldNormal = worldNormal;
 
-    float lightDot = dot(normalize(worldNormal.xyz), lightDir);
-    so_lighting = (1.0 + lightDot) / 2.0;
-
-    so_worldPos = worldPos.xyz;
-    so_worldNormal = worldNormal.xyz;
+    // nb: worldNormal and uLamp.dir assumed to be normalized and w=0
+    sLampIllumination = (1.0 + dot(worldNormal, uLamp.fromDirection)) / 2.0;
 }
