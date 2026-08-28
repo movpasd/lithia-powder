@@ -6,6 +6,9 @@ layout(std140, set = 1, binding = 0) uniform UCamera {
     mat4 view;
     mat4 viewPerspective;
 } uCamera;
+layout(std140, set = 1, binding = 1) uniform ULamp {
+    vec4 fromDirection;
+} uLamp;
 layout(std140, set = 1, binding = 2) uniform UPose {
     mat4 transform;
 } uPose;
@@ -19,13 +22,8 @@ layout(location = 1) out float sLampIllumination;
 layout(location = 2) out vec4 sWorldPosition;
 layout(location = 3) out vec4 sWorldNormal;
 
-const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
 void main() {
-    vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
-
-    // ---
-
     sColor = vColor;
 
     vec4 worldPosition = uPose.transform * vModelPosition;
@@ -35,6 +33,6 @@ void main() {
     sWorldPosition = worldPosition;
     sWorldNormal = worldNormal;
 
-    // nb: worldNormal and uLamp.dir assumed to be normalized and w=0
-    sLampIllumination = (1.0 + dot(worldNormal, uLamp_fromDirection)) / 2.0;
+    // nb: worldNormal and uLamp.fromDirection assumed to be normalized and w=0
+    sLampIllumination = (1.0 + dot(worldNormal, uLamp.fromDirection)) / 2.0;
 }

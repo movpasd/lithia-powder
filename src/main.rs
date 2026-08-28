@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, ffi::CStr, time::Instant};
 
-use glam::{vec3, Mat4, Quat, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec3, Vec4, vec3, vec4};
 use sdl3::{
     self,
     gpu::{
@@ -201,11 +201,15 @@ fn main() {
                         ));
                         buf
                     };
+                    let u_lamp = vec4(-3.0, 0.0, 1.0, 0.0).normalize();
+                    let u_pose = Mat4::from_rotation_translation(pose.rot, pose.pos);
+
                     cbuf.push_vertex_uniform_data(0, &u_camera);
-                    let pose_transform = Mat4::from_rotation_translation(pose.rot, pose.pos);
-                    cbuf.push_vertex_uniform_data(2, &pose_transform);
+                    cbuf.push_vertex_uniform_data(1, &u_lamp);
+                    cbuf.push_vertex_uniform_data(2, &u_pose);
 
                     cbuf.push_fragment_uniform_data(0, &u_camera);
+                    cbuf.push_fragment_uniform_data(1, &u_lamp);
 
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
                 }
@@ -321,7 +325,7 @@ fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline
                 fragment_ir.as_binary_u8(),
                 ShaderStage::Fragment,
             )
-            .with_uniform_buffers(1)
+            .with_uniform_buffers(2)
             .build()
             .unwrap();
     }
