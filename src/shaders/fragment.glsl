@@ -12,7 +12,7 @@ layout(location = 1) in float sLampIllumination;
 layout(location = 2) in vec4 sWorldPosition;
 layout(location = 3) in vec4 sWorldNormal;
 
-layout(location = 0) out vec4 ca_color;
+layout(location = 0) out vec4 fColor;
 
 const vec3 lightDir = normalize(vec3(-3.0, 0.0, 1.0));
 
@@ -30,8 +30,6 @@ void main() {
     // mat4 uCamera_viewPerspective = ;
     vec4 uLamp_fromDirection = vec4(lightDir, 0.0);
 
-    vec4 fColor;
-
     // ---
 
     float finalIllumination = max(AMBIENT_ILLUMINATION, sLampIllumination);
@@ -45,8 +43,4 @@ void main() {
     float glare = max(0.0, 1.0 - angleFromReflection / GLARE_ANGLE);
 
     fColor = sColor * lightingMultiplier + GLARE_MULTIPLIER * glare;
-
-    // ---
-
-    ca_color = fColor;
 }
