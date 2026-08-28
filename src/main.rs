@@ -23,10 +23,10 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // geometry data
-    let meshes: Vec<mesh::Mesh<Vec4>> = vec![
-        mesh::colorful_cube(),
-        mesh::colorful_cube(),
-        mesh::colorful_cube(),
+    let meshes: Vec<meshobj::Mesh<Vec4>> = vec![
+        meshobj::colorful_cube(),
+        meshobj::colorful_cube(),
+        meshobj::colorful_cube(),
     ];
     let mut poses: Vec<anim::Pose> = vec![
         anim::Pose::default(),
@@ -365,7 +365,7 @@ struct MeshBufferEntry {
 /// the given transfer buffers, returning location information for each mesh
 fn upload_mesh_data(
     device: &Device,
-    meshes: &[mesh::Mesh<Vec4>],
+    meshes: &[meshobj::Mesh<Vec4>],
     tbuf1: &TransferBuffer,
     tbuf2: &TransferBuffer,
     mesh_vbuf: &Buffer,
@@ -459,7 +459,7 @@ impl GpuVertex {
         ]
     }
 
-    fn from_mesh_vertex(v: &mesh::Vertex<Vec4>) -> Self {
+    fn from_mesh_vertex(v: &meshobj::Vertex<Vec4>) -> Self {
         Self {
             position: v.position,
             color: v.data,
@@ -468,7 +468,7 @@ impl GpuVertex {
     }
 }
 
-mod mesh {
+mod meshobj {
     use glam::{vec3, Mat4, Vec4};
 
     /// (make sure your positions have w=1.0 and normals have w=0.0)
