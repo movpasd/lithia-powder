@@ -7,10 +7,10 @@ use sdl3::{
         Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription,
         ColorTargetInfo, CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device,
         FillMode, FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize,
-        LoadOp, RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage, StoreOp, Texture,
-        TextureCreateInfo, TextureFormat, TextureType, TextureUsage, TransferBuffer,
-        TransferBufferLocation, VertexAttribute, VertexBufferDescription, VertexElementFormat,
-        VertexInputRate, VertexInputState,
+        LoadOp, PrimitiveType, RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage,
+        StoreOp, Texture, TextureCreateInfo, TextureFormat, TextureType, TextureUsage,
+        TransferBuffer, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
+        VertexElementFormat, VertexInputRate, VertexInputState,
     },
     keyboard::Keycode,
     pixels::Color,
@@ -18,10 +18,15 @@ use sdl3::{
     Sdl,
 };
 
-const EMPTY_C_STRING: &CStr = c"";
-
 fn main() {
     let sdl = sdl3::init().unwrap();
+
+    // GPU resources and declaration
+    let mut gfx_state = GfxState::new(&sdl);
+    println!(
+        "GPU device name: {}",
+        gfx_state.get_gpu_model_name().to_str().unwrap()
+    );
 
     // geometry data
     let meshes: Vec<meshobj::Mesh<Vec4>> = vec![
@@ -50,18 +55,8 @@ fn main() {
         aspect_ratio: 1920.0 / 1080.0,
     };
 
-    // GPU resources and declaration
-    let mut gfx_state = GfxState::new(&sdl);
-
     // mesh data upload
-    let mesh_buf_entries = upload_mesh_data(
-        &gfx_state.device,
-        &meshes,
-        &gfx_state.tbuf1,
-        &gfx_state.tbuf2,
-        &gfx_state.mesh_vbuf,
-        &gfx_state.mesh_ibuf,
-    );
+    let mesh_buf_entries = gfx_state.upload_mesh_data(&meshes);
 
     // event loop
     let start_time = Instant::now();
@@ -208,7 +203,6 @@ struct GfxState {
 }
 impl GfxState {
     fn new(sdl: &Sdl) -> GfxState {
-        // window setup
         let video_sys = sdl.video().unwrap();
         let window = video_sys
             .window("lithia-powder", 980, 640)
@@ -217,21 +211,12 @@ impl GfxState {
             .build()
             .unwrap();
 
-        // GPU setup
         let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, true).unwrap();
         device = device.with_window(&window).unwrap();
-        unsafe {
-            let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(device.raw());
-            let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(
-                properties,
-                sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING,
-                EMPTY_C_STRING.as_ptr(),
-            ));
-            println!("{property_value:?}");
-        }
 
-        // resource definition
-        let pipeline = prepare_render_pipeline(&device, &window);
+        let pipeline = Self::new_render_pipeline(&device, &window);
+
+        // resource creation
         let mesh_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
@@ -278,174 +263,177 @@ impl GfxState {
             tbuf2,
         }
     }
-}
 
-fn prepare_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline {
-    use sdl3::gpu::PrimitiveType;
-
-    // load and compile shaders
-    let vertex_shader: Shader;
-    let fragment_shader: Shader;
-    {
-        use shaderc::ShaderKind;
-
-        let compiler = shaderc::Compiler::new().unwrap();
-
-        let vertex_source = include_str!("shaders/vertex.glsl");
-        let vertex_ir = compiler
-            .compile_into_spirv(
-                vertex_source,
-                ShaderKind::Vertex,
-                "shaders/vertex.glsl",
-                "main",
-                None,
-            )
-            .unwrap();
-        vertex_shader = device
-            .create_shader()
-            .with_code(
-                ShaderFormat::SPIRV,
-                vertex_ir.as_binary_u8(),
-                ShaderStage::Vertex,
-            )
-            .with_uniform_buffers(3)
-            .build()
-            .unwrap();
-
-        let fragment_source = include_str!("shaders/fragment.glsl");
-        let fragment_ir = compiler
-            .compile_into_spirv(
-                fragment_source,
-                ShaderKind::Fragment,
-                "shaders/fragment.glsl",
-                "main",
-                None,
-            )
-            .unwrap();
-        fragment_shader = device
-            .create_shader()
-            .with_code(
-                ShaderFormat::SPIRV,
-                fragment_ir.as_binary_u8(),
-                ShaderStage::Fragment,
-            )
-            .with_uniform_buffers(2)
-            .build()
-            .unwrap();
+    fn get_gpu_model_name(&self) -> &CStr {
+        unsafe {
+            let properties = sdl3::sys::gpu::SDL_GetGPUDeviceProperties(self.device.raw());
+            let property_value = CStr::from_ptr(sdl3::sys::properties::SDL_GetStringProperty(
+                properties,
+                sdl3::sys::gpu::SDL_PROP_GPU_DEVICE_NAME_STRING,
+                c"".as_ptr(),
+            ));
+            property_value
+        }
     }
 
-    let texture_format = device.get_swapchain_texture_format(window);
+    fn new_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline {
+        // load and compile shaders
+        let vertex_shader: Shader;
+        let fragment_shader: Shader;
+        {
+            use shaderc::ShaderKind;
 
-    device
-        .create_graphics_pipeline()
-        .with_vertex_shader(&vertex_shader)
-        .with_fragment_shader(&fragment_shader)
-        .with_vertex_input_state(
-            VertexInputState::new()
-                .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                    .with_slot(0)
-                    .with_pitch(size_of::<GpuVertex>() as u32)
-                    .with_input_rate(VertexInputRate::Vertex)])
-                .with_vertex_attributes(&GpuVertex::get_attributes(0)),
-        )
-        .with_primitive_type(PrimitiveType::TriangleList)
-        .with_rasterizer_state(
-            RasterizerState::new()
-                .with_fill_mode(FillMode::Fill)
-                .with_cull_mode(CullMode::Back)
-                .with_front_face(FrontFace::CounterClockwise),
-        )
-        .with_depth_stencil_state(
-            DepthStencilState::new()
-                .with_compare_op(CompareOp::Less)
-                .with_enable_depth_test(true)
-                .with_enable_depth_write(true),
-        )
-        .with_target_info(
-            GraphicsPipelineTargetInfo::new()
-                .with_color_target_descriptions(&[
-                    ColorTargetDescription::new().with_format(texture_format)
-                ])
-                .with_has_depth_stencil_target(true)
-                .with_depth_stencil_format(TextureFormat::D16Unorm),
-        )
-        .build()
-        .unwrap()
+            let compiler = shaderc::Compiler::new().unwrap();
+
+            let vertex_source = include_str!("shaders/vertex.glsl");
+            let vertex_ir = compiler
+                .compile_into_spirv(
+                    vertex_source,
+                    ShaderKind::Vertex,
+                    "shaders/vertex.glsl",
+                    "main",
+                    None,
+                )
+                .unwrap();
+            vertex_shader = device
+                .create_shader()
+                .with_code(
+                    ShaderFormat::SPIRV,
+                    vertex_ir.as_binary_u8(),
+                    ShaderStage::Vertex,
+                )
+                .with_uniform_buffers(3)
+                .build()
+                .unwrap();
+
+            let fragment_source = include_str!("shaders/fragment.glsl");
+            let fragment_ir = compiler
+                .compile_into_spirv(
+                    fragment_source,
+                    ShaderKind::Fragment,
+                    "shaders/fragment.glsl",
+                    "main",
+                    None,
+                )
+                .unwrap();
+            fragment_shader = device
+                .create_shader()
+                .with_code(
+                    ShaderFormat::SPIRV,
+                    fragment_ir.as_binary_u8(),
+                    ShaderStage::Fragment,
+                )
+                .with_uniform_buffers(2)
+                .build()
+                .unwrap();
+        }
+
+        let texture_format = device.get_swapchain_texture_format(window);
+
+        device
+            .create_graphics_pipeline()
+            .with_vertex_shader(&vertex_shader)
+            .with_fragment_shader(&fragment_shader)
+            .with_vertex_input_state(
+                VertexInputState::new()
+                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
+                        .with_slot(0)
+                        .with_pitch(size_of::<GpuVertex>() as u32)
+                        .with_input_rate(VertexInputRate::Vertex)])
+                    .with_vertex_attributes(&GpuVertex::get_attributes(0)),
+            )
+            .with_primitive_type(PrimitiveType::TriangleList)
+            .with_rasterizer_state(
+                RasterizerState::new()
+                    .with_fill_mode(FillMode::Fill)
+                    .with_cull_mode(CullMode::Back)
+                    .with_front_face(FrontFace::CounterClockwise),
+            )
+            .with_depth_stencil_state(
+                DepthStencilState::new()
+                    .with_compare_op(CompareOp::Less)
+                    .with_enable_depth_test(true)
+                    .with_enable_depth_write(true),
+            )
+            .with_target_info(
+                GraphicsPipelineTargetInfo::new()
+                    .with_color_target_descriptions(&[
+                        ColorTargetDescription::new().with_format(texture_format)
+                    ])
+                    .with_has_depth_stencil_target(true)
+                    .with_depth_stencil_format(TextureFormat::D16Unorm),
+            )
+            .build()
+            .unwrap()
+    }
+
+    fn upload_mesh_data(&self, meshes: &[meshobj::Mesh<Vec4>]) -> Vec<MeshBufferEntry> {
+        // accumulate data into local byte array, keeping track of entries
+        let mut vbuf_data: Vec<u8> = vec![];
+        let mut ibuf_data: Vec<u8> = vec![];
+        let mut buffer_entries = vec![];
+        let mut next_first_index: u32 = 0;
+        let mut next_vertex_offset: i32 = 0;
+        for mesh in meshes {
+            let gpu_vertexes: Vec<_> = mesh
+                .vertexes
+                .iter()
+                .map(GpuVertex::from_mesh_vertex)
+                .collect();
+
+            let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
+            vbuf_data.extend_from_slice(vbytes);
+            let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
+            ibuf_data.extend_from_slice(ibytes);
+
+            let mesh_index_count = mesh.indexes.len() as u32;
+            let mesh_vertex_count = mesh.vertexes.len() as i32;
+            let entry = MeshBufferEntry {
+                first_index: next_first_index,
+                num_indices: mesh_index_count,
+                vertex_offset: next_vertex_offset,
+            };
+            buffer_entries.push(entry);
+            next_first_index += mesh_index_count;
+            next_vertex_offset += mesh_vertex_count;
+        }
+        {
+            self.tbuf1.map(&self.device, true).mem_mut()[0..vbuf_data.len()]
+                .copy_from_slice(&vbuf_data);
+            self.tbuf2.map(&self.device, true).mem_mut()[0..ibuf_data.len()]
+                .copy_from_slice(&ibuf_data);
+
+            let data_upload = self.device.acquire_command_buffer().unwrap();
+            {
+                let copy_pass = self.device.begin_copy_pass(&data_upload).unwrap();
+                copy_pass.upload_to_gpu_buffer(
+                    TransferBufferLocation::new().with_transfer_buffer(&self.tbuf1),
+                    BufferRegion::new()
+                        .with_buffer(&self.mesh_vbuf)
+                        .with_size(self.mesh_vbuf.len()),
+                    true,
+                );
+                copy_pass.upload_to_gpu_buffer(
+                    TransferBufferLocation::new().with_transfer_buffer(&self.tbuf2),
+                    BufferRegion::new()
+                        .with_buffer(&self.mesh_ibuf)
+                        .with_size(self.mesh_ibuf.len()),
+                    true,
+                );
+                self.device.end_copy_pass(copy_pass);
+            }
+            let data_upload_fence = data_upload.submit_and_acquire_fence(&self.device).unwrap();
+            while !data_upload_fence.query(&self.device) {}
+        }
+
+        buffer_entries
+    }
 }
 
 struct MeshBufferEntry {
     first_index: u32,
     num_indices: u32,
     vertex_offset: i32,
-}
-
-/// runs a copy pass to upload the data from `meshes` to mesh_vbuf and mesh_ibuf using
-/// the given transfer buffers, returning location information for each mesh
-fn upload_mesh_data(
-    device: &Device,
-    meshes: &[meshobj::Mesh<Vec4>],
-    tbuf1: &TransferBuffer,
-    tbuf2: &TransferBuffer,
-    mesh_vbuf: &Buffer,
-    mesh_ibuf: &Buffer,
-) -> Vec<MeshBufferEntry> {
-    // accumulate data into local byte array, keeping track of entries
-    let mut vbuf_data: Vec<u8> = vec![];
-    let mut ibuf_data: Vec<u8> = vec![];
-    let mut buffer_entries = vec![];
-    let mut next_first_index: u32 = 0;
-    let mut next_vertex_offset: i32 = 0;
-    for mesh in meshes {
-        let gpu_vertexes: Vec<_> = mesh
-            .vertexes
-            .iter()
-            .map(GpuVertex::from_mesh_vertex)
-            .collect();
-
-        let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
-        vbuf_data.extend_from_slice(vbytes);
-        let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
-        ibuf_data.extend_from_slice(ibytes);
-
-        let mesh_index_count = mesh.indexes.len() as u32;
-        let mesh_vertex_count = mesh.vertexes.len() as i32;
-        let entry = MeshBufferEntry {
-            first_index: next_first_index,
-            num_indices: mesh_index_count,
-            vertex_offset: next_vertex_offset,
-        };
-        buffer_entries.push(entry);
-        next_first_index += mesh_index_count;
-        next_vertex_offset += mesh_vertex_count;
-    }
-    {
-        tbuf1.map(device, true).mem_mut()[0..vbuf_data.len()].copy_from_slice(&vbuf_data);
-        tbuf2.map(device, true).mem_mut()[0..ibuf_data.len()].copy_from_slice(&ibuf_data);
-
-        let data_upload = device.acquire_command_buffer().unwrap();
-        {
-            let copy_pass = device.begin_copy_pass(&data_upload).unwrap();
-            copy_pass.upload_to_gpu_buffer(
-                TransferBufferLocation::new().with_transfer_buffer(tbuf1),
-                BufferRegion::new()
-                    .with_buffer(mesh_vbuf)
-                    .with_size(mesh_vbuf.len()),
-                true,
-            );
-            copy_pass.upload_to_gpu_buffer(
-                TransferBufferLocation::new().with_transfer_buffer(tbuf2),
-                BufferRegion::new()
-                    .with_buffer(mesh_ibuf)
-                    .with_size(mesh_ibuf.len()),
-                true,
-            );
-            device.end_copy_pass(copy_pass);
-        }
-        let data_upload_fence = data_upload.submit_and_acquire_fence(device).unwrap();
-        while !data_upload_fence.query(device) {}
-    }
-
-    buffer_entries
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
