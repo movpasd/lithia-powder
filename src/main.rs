@@ -4,7 +4,7 @@ mod meshobj;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec3, Vec4};
+use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
 use sdl3::keyboard::Keycode;
 
 fn main() {
@@ -48,9 +48,9 @@ fn main() {
 
     // animation preparation
     let cube_anim = somersault_anim(
-        1.0 * Vec3::X.rotate_z(-120_f32.to_radians()),
+        2.0 * Vec3::X.rotate_z(-120_f32.to_radians()),
         Vec3::ZERO,
-        2.3,
+        2.55,
         1.25,
         2.0,
     );
@@ -84,7 +84,7 @@ fn main() {
             {
                 const ORBIT_PERIOD: f32 = 60.0;
                 const ORBIT_BIRDSEYE_DISTANCE: f32 = 4.5;
-                const ORBIT_HEIGHT: f32 = 1.2;
+                const ORBIT_HEIGHT: f32 = 3.2;
                 const ORBIT_PHASE_INIT: f32 = -TAU / 9.0;
                 const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.8);
 
@@ -129,8 +129,12 @@ fn somersault_anim(
             let bounce_displacement = Vec3::Z * s * bounce_height;
             let position = baseline + bounce_displacement;
 
-            let facing = (end_position - start_position).with_z(0.0).normalize();
-            let rotation = Quat::from_rotation_arc(Vec3::X, facing);
+            let facing = (end_position - start_position).xy().normalize();
+            let facing_rotation = Quat::from_rotation_arc_2d(Vec2::X, facing);
+
+            let flip_rotation = Quat::from_rotation_y(TAU * t * flip_count);
+
+            let rotation = facing_rotation * flip_rotation;
 
             gfx::Pose { position, rotation }
         })
