@@ -1,6 +1,6 @@
+mod animobj;
 mod gfx;
 mod meshobj;
-mod animobj;
 
 use std::{f32::consts::TAU, time::Instant};
 
@@ -45,6 +45,15 @@ fn main() {
 
     // mesh data upload
     gfx_state.update_meshes(&meshes);
+
+    // animation preparation
+    let cube_anim = somersault_anim(
+        1.0 * Vec3::X.rotate_z(-120_f32.to_radians()),
+        Vec3::ZERO,
+        2.3,
+        1.25,
+        2.0,
+    );
 
     // event loop
     let start_time = Instant::now();
@@ -96,7 +105,7 @@ fn main() {
             }
 
             // cube animation
-            poses[0] = anim::pose(elapsed_time_secs);
+            poses[0] = cube_anim.sample_looped(elapsed_time_secs);
         }
 
         // render
@@ -106,116 +115,26 @@ fn main() {
     }
 }
 
-mod anim {
-    use std::{
-        f32::consts::TAU,
-        ops::{Add, Mul},
-    };
+fn somersault_anim(
+    start_position: Vec3,
+    end_position: Vec3,
+    bounce_height: f32,
+    length_secs: f32,
+    flip_count: f32,
+) -> animobj::Anim<gfx::Pose> {
+    animobj::f32::parabola()
+        .map_indexed(move |t, s| {
+            // the "baseline" is the straight line between start_position to end_position
+            let baseline = start_position + (end_position - start_position) * t;
+            let bounce_displacement = Vec3::Z * s * bounce_height;
+            let position = baseline + bounce_displacement;
 
-    use glam::{vec3, Quat};
+            let facing = (end_position - start_position).with_z(0.0).normalize();
+            let rotation = Quat::from_rotation_arc(Vec3::X, facing);
 
-    const WAIT_TIME: f32 = 1.5;
-    const MOVE_TIME: f32 = 0.5;
-    const SPIN_TIME: f32 = 0.33;
-    const SPIN_OVERLAP_TIME: f32 = 0.4;
-
-    const ANIM_TIME: f32 = WAIT_TIME + MOVE_TIME + SPIN_TIME + MOVE_TIME;
-    const Z_KEYFRAME_TIMES: [f32; 4] = [
-        0.0,
-        WAIT_TIME,
-        WAIT_TIME + MOVE_TIME,
-        WAIT_TIME + MOVE_TIME + SPIN_TIME,
-    ];
-    const ROT_KEYFRAME_TIMES: [f32; 4] = const {
-        let mut rot_keyframe_times = Z_KEYFRAME_TIMES;
-        rot_keyframe_times[2] -= SPIN_OVERLAP_TIME;
-        rot_keyframe_times[3] += SPIN_OVERLAP_TIME;
-        rot_keyframe_times
-    };
-
-    const H: f32 = 1.0;
-    const THETA: f32 = TAU;
-
-    pub fn pose(t: f32) -> super::gfx::Pose {
-        let t = t % ANIM_TIME;
-
-        #[allow(unused_variables)]
-        let z = if (Z_KEYFRAME_TIMES[0]..Z_KEYFRAME_TIMES[1]).contains(&t) {
-            // wait
-            let subt = t - Z_KEYFRAME_TIMES[0];
-            let wlen = Z_KEYFRAME_TIMES[1] - Z_KEYFRAME_TIMES[0];
-            0.0
-        } else if (Z_KEYFRAME_TIMES[1]..Z_KEYFRAME_TIMES[2]).contains(&t) {
-            // move up
-            let subt = t - Z_KEYFRAME_TIMES[1];
-            let wlen = Z_KEYFRAME_TIMES[2] - Z_KEYFRAME_TIMES[1];
-            lerp(0.0, H, smooth(subt / wlen))
-        } else if (Z_KEYFRAME_TIMES[2]..Z_KEYFRAME_TIMES[3]).contains(&t) {
-            // spin
-            let subt = t - Z_KEYFRAME_TIMES[2];
-            let wlen = Z_KEYFRAME_TIMES[3] - Z_KEYFRAME_TIMES[2];
-            H
-        } else if (Z_KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
-            // move down
-            let subt = t - Z_KEYFRAME_TIMES[3];
-            let wlen = ANIM_TIME - Z_KEYFRAME_TIMES[3];
-            lerp(H, 0.0, smooth(subt / wlen))
-        } else {
-            unreachable!()
-        };
-        let pos = vec3(0.0, 0.0, z);
-
-        #[allow(unused_variables)]
-        let angle = if (ROT_KEYFRAME_TIMES[0]..ROT_KEYFRAME_TIMES[1]).contains(&t) {
-            // wait
-            let subt = t - ROT_KEYFRAME_TIMES[0];
-            let wlen = ROT_KEYFRAME_TIMES[1] - ROT_KEYFRAME_TIMES[0];
-            0.0
-        } else if (ROT_KEYFRAME_TIMES[1]..ROT_KEYFRAME_TIMES[2]).contains(&t) {
-            // move up
-            let subt = t - ROT_KEYFRAME_TIMES[1];
-            let wlen = ROT_KEYFRAME_TIMES[2] - ROT_KEYFRAME_TIMES[1];
-            0.0
-        } else if (ROT_KEYFRAME_TIMES[2]..ROT_KEYFRAME_TIMES[3]).contains(&t) {
-            // spin
-            let subt = t - ROT_KEYFRAME_TIMES[2];
-            let wlen = ROT_KEYFRAME_TIMES[3] - ROT_KEYFRAME_TIMES[2];
-            lerp(0.0, THETA, smooth(subt / wlen))
-        } else if (ROT_KEYFRAME_TIMES[3]..ANIM_TIME).contains(&t) {
-            // move down
-            let subt = t - ROT_KEYFRAME_TIMES[3];
-            let wlen = ANIM_TIME - ROT_KEYFRAME_TIMES[3];
-            0.0
-        } else {
-            unreachable!()
-        };
-        let rot = Quat::from_rotation_x(angle);
-
-        super::gfx::Pose {
-            position: pos,
-            rotation: rot,
-        }
-    }
-
-    fn lerp<T: Mul<f32, Output = T> + Add<T, Output = T>>(a: T, b: T, x: f32) -> T {
-        if x < 0.0 {
-            a
-        } else if 1.0 <= x {
-            b
-        } else {
-            a * (1.0 - x) + b * x
-        }
-    }
-
-    fn smooth(x: f32) -> f32 {
-        if x < 0.0 {
-            0.0
-        } else if 1.0 <= x {
-            1.0
-        } else {
-            x * x * (3.0 - 2.0 * x)
-        }
-    }
+            gfx::Pose { position, rotation }
+        })
+        .stretched(length_secs)
 }
 
 #[allow(dead_code)]

@@ -29,10 +29,10 @@ impl<T> AnimFnHandle<T> {
 
 // -- basic properties --
 impl<T: Copy + Sized + 'static> Anim<T> {
-    fn length(&self) -> f32 {
+    pub fn length(&self) -> f32 {
         self.length
     }
-    fn sample(&self, t: f32) -> T {
+    pub fn sample(&self, t: f32) -> T {
         if t < 0.0 {
             self.fn_handle.call(0.0)
         } else if 0.0 <= t && t < self.length {
@@ -41,7 +41,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
             self.fn_handle.call(self.length)
         }
     }
-    fn sample_looped(&self, t: f32) -> T {
+    pub fn sample_looped(&self, t: f32) -> T {
         self.fn_handle.call(t % self.length)
     }
 }
@@ -229,7 +229,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
 pub mod f32 {
     use super::Anim;
     pub fn parabola() -> Anim<f32> {
-        Anim::func(1.0, |t| t * (1.0 - t))
+        Anim::func(1.0, |t| 4.0 * t * (1.0 - t))
     }
     pub fn cubic_ease() -> Anim<f32> {
         Anim::func(1.0, |t| t * t * (3.0 - 2.0 * t))

@@ -426,7 +426,7 @@ struct UPose {
     transform: Mat4,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Pose {
     pub position: Vec3,
     pub rotation: Quat,
