@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-/// represents a virtual function on the interval [0, length)
+/// represents a virtual function on the interval [0, length]
 #[derive(Debug, Clone)]
 pub struct Anim<T: Copy + Sized + 'static> {
     length: f32,
@@ -99,16 +99,99 @@ impl<T: Copy + Sized + 'static> Anim<T> {
 
 // -- combinators --
 impl<T: Copy + Sized + 'static> Anim<T> {
-    pub fn with_length(&self, new_length: f32) -> Anim<T> {
-        let mut self_clone = self.clone();
-        self_clone.length = new_length;
-        self_clone
+    pub fn map<T2, F>(&self, f: F) -> Anim<T2>
+    where
+        T2: Copy + Sized + 'static,
+        F: Fn(T) -> T2 + 'static,
+    {
+        let self_clone = self.clone();
+        Anim::func(self_clone.length, move |t| f(self_clone.fn_handle.call(t)))
+    }
+    pub fn map_indexed<T2, F>(&self, f: F) -> Anim<T2>
+    where
+        T2: Copy + Sized + 'static,
+        F: Fn(f32, T) -> T2 + 'static,
+    {
+        let self_clone = self.clone();
+        Anim::func(self_clone.length, move |t| {
+            f(t, self_clone.fn_handle.call(t))
+        })
+    }
+    pub fn zip<T2>(&self, other: Anim<T2>) -> Anim<(T, T2)>
+    where
+        T2: Copy + Sized + 'static,
+    {
+        let self_clone = self.clone();
+        let other_clone = other.clone();
+        Anim::func(self_clone.length, move |t| {
+            (self_clone.fn_handle.call(t), other_clone.fn_handle.call(t))
+        })
+    }
+    pub fn zip_indexed<T2, F>(&self, other: Anim<T2>) -> Anim<(f32, T, T2)>
+    where
+        T2: Copy + Sized + 'static,
+    {
+        let self_clone = self.clone();
+        let other_clone = other.clone();
+        Anim::func(self_clone.length, move |t| {
+            (
+                t,
+                self_clone.fn_handle.call(t),
+                other_clone.fn_handle.call(t),
+            )
+        })
+    }
+    pub fn zip_map<T2, TOut, F>(&self, other: Anim<T2>, f: F) -> Anim<TOut>
+    where
+        T2: Copy + Sized + 'static,
+        TOut: Copy + Sized + 'static,
+        F: Fn(T, T2) -> TOut + 'static,
+    {
+        let self_clone = self.clone();
+        let other_clone = other.clone();
+        Anim::func(self_clone.length, move |t| {
+            f(self_clone.fn_handle.call(t), other_clone.fn_handle.call(t))
+        })
+    }
+    pub fn zip_map_indexed<T2, TOut, F>(&self, other: Anim<T2>, f: F) -> Anim<TOut>
+    where
+        T2: Copy + Sized + 'static,
+        TOut: Copy + Sized + 'static,
+        F: Fn(f32, T, T2) -> TOut + 'static,
+    {
+        let self_clone = self.clone();
+        let other_clone = other.clone();
+        Anim::func(self_clone.length, move |t| {
+            f(
+                t,
+                self_clone.fn_handle.call(t),
+                other_clone.fn_handle.call(t),
+            )
+        })
+    }
+    /// f should be a function from [0, 1] -> [0, 1]
+    pub fn warp<F>(&self, f: F) -> Anim<T>
+    where
+        F: Fn(f32) -> f32 + 'static,
+    {
+        let self_clone = self.clone();
+        Anim::func(self_clone.length, move |t| {
+            self_clone
+                .fn_handle
+                .call(f(t / self_clone.length) * self_clone.length)
+        })
+    }
+    pub fn reversed(&self) -> Anim<T> {
+        let self_clone = self.clone();
+        Anim::func(self_clone.length, move |t| {
+            self_clone.fn_handle.call(self_clone.length - t)
+        })
     }
     pub fn then(&self, other: &Anim<T>) -> Anim<T> {
         let self_clone = self.clone();
         let other_clone = other.clone();
         Anim::func(self.length + other.length, move |t| {
-            if t <= self_clone.length() {
+            if t <= self_clone.length {
                 self_clone.fn_handle.call(t)
             } else {
                 other_clone.fn_handle.call(t)
@@ -128,6 +211,16 @@ impl<T: Copy + Sized + 'static> Anim<T> {
                 self_clone.fn_handle.call(0.0)
             } else {
                 self_clone.fn_handle.call(t - delay_length)
+            }
+        })
+    }
+    pub fn then_pause(&self, pause_length: f32) -> Anim<T> {
+        let self_clone = self.clone();
+        Anim::func(self.length + pause_length, move |t| {
+            if t <= self_clone.length {
+                self_clone.fn_handle.call(t)
+            } else {
+                self_clone.fn_handle.call(self_clone.length)
             }
         })
     }
