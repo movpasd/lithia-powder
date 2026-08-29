@@ -47,13 +47,30 @@ fn main() {
     gfx_state.update_meshes(&meshes);
 
     // animation preparation
-    let cube_anim = somersault_anim(
-        2.0 * Vec3::X.rotate_z(-120_f32.to_radians()),
-        Vec3::ZERO,
-        2.55,
-        1.25,
-        2.0,
-    );
+    let cube_anims = [0, 1, 2].map(|i| {
+        let length_secs = 1.25;
+        let wait_secs = 0.2;
+        let total_secs = 2.0 * (length_secs + wait_secs);
+        let distance = 3.0;
+        let height = 4.0;
+
+        let angle = i as f32 * 120_f32.to_radians();
+        let shift = i as f32 * total_secs / 3.0;
+
+        let somersault = somersault_anim(
+            distance * Vec3::X.rotate_z(angle),
+            Vec3::ZERO,
+            height,
+            length_secs,
+            1.0,
+        );
+        dbg!(&somersault.reversed());
+        somersault
+            .then_pause(wait_secs)
+            .then(&somersault.reversed())
+            .then_pause(wait_secs)
+            .loop_shifted(shift)
+    });
 
     // event loop
     let start_time = Instant::now();
@@ -82,11 +99,11 @@ fn main() {
         {
             // camera stuff
             {
-                const ORBIT_PERIOD: f32 = 60.0;
-                const ORBIT_BIRDSEYE_DISTANCE: f32 = 4.5;
-                const ORBIT_HEIGHT: f32 = 3.2;
-                const ORBIT_PHASE_INIT: f32 = -TAU / 9.0;
-                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.8);
+                const ORBIT_PERIOD: f32 = 40.0;
+                const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
+                const ORBIT_HEIGHT: f32 = 7.0;
+                const ORBIT_PHASE_INIT: f32 = 0.0;
+                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
                 let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
                 let position = vec3(
@@ -105,7 +122,9 @@ fn main() {
             }
 
             // cube animation
-            poses[0] = cube_anim.sample_looped(elapsed_time_secs);
+            for (pose, anim) in poses.iter_mut().zip(&cube_anims) {
+                *pose = anim.sample_looped(elapsed_time_secs);
+            }
         }
 
         // render

@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{
     ops::{Add, Mul},
     sync::Arc,
@@ -76,7 +78,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
         }
 
         let total_length = anims.iter().fold(0.0, |acc, el| acc + el.length());
-        let anims_cloned: Vec<_> = anims.iter().cloned().collect();
+        let anims_cloned: Vec<_> = anims.to_vec();
 
         let joined_anim = Self::func(total_length, move |t| {
             let mut next_t = 0.0f32;
@@ -127,7 +129,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
             (self_clone.fn_handle.call(t), other_clone.fn_handle.call(t))
         })
     }
-    pub fn zip_indexed<T2, F>(&self, other: Anim<T2>) -> Anim<(f32, T, T2)>
+    pub fn zip_indexed<T2>(&self, other: Anim<T2>) -> Anim<(f32, T, T2)>
     where
         T2: Copy + Sized + 'static,
     {
@@ -194,7 +196,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
             if t <= self_clone.length {
                 self_clone.fn_handle.call(t)
             } else {
-                other_clone.fn_handle.call(t)
+                other_clone.fn_handle.call(t - self_clone.length)
             }
         })
     }
@@ -222,6 +224,14 @@ impl<T: Copy + Sized + 'static> Anim<T> {
             } else {
                 self_clone.fn_handle.call(self_clone.length)
             }
+        })
+    }
+    pub fn loop_shifted(&self, shift_length: f32) -> Anim<T> {
+        let self_clone = self.clone();
+        Anim::func(self.length, move |t| {
+            self_clone
+                .fn_handle
+                .call((t + shift_length) % self_clone.length)
         })
     }
 }
