@@ -1,5 +1,6 @@
 mod gfx;
 mod meshobj;
+mod animobj;
 
 use std::{f32::consts::TAU, time::Instant};
 
