@@ -196,11 +196,11 @@ impl State {
         let mut mesh_buf_entries = vec![];
         let mut next_first_index: u32 = 0;
         let mut next_vertex_offset: i32 = 0;
-        for mesh in meshes {
+        for (mesh_id, mesh) in meshes.iter().enumerate() {
             let gpu_vertexes: Vec<_> = mesh
                 .vertexes
                 .iter()
-                .map(GpuVertex::from_mesh_vertex)
+                .map(|mesh_vertex| GpuVertex::from_mesh_vertex(mesh_id as u32, mesh_vertex))
                 .collect();
 
             let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
@@ -349,6 +349,8 @@ struct GpuVertex {
     model_position: Vec4,
     model_normal: Vec4,
     color: Vec4,
+    mesh_id: u32,
+    _pad: [u8; 12],
 }
 impl GpuVertex {
     fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
@@ -368,14 +370,21 @@ impl GpuVertex {
                 .with_location(2)
                 .with_offset(32)
                 .with_format(VertexElementFormat::Float4),
+            VertexAttribute::new()
+                .with_buffer_slot(buffer_slot)
+                .with_location(3)
+                .with_offset(48)
+                .with_format(VertexElementFormat::Uint),
         ]
     }
 
-    fn from_mesh_vertex(v: &super::meshobj::Vertex<Vec4>) -> Self {
+    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::meshobj::Vertex<Vec4>) -> Self {
         Self {
-            model_position: v.position,
-            color: v.data,
-            model_normal: v.normal,
+            model_position: mesh_vertex.position,
+            color: mesh_vertex.data,
+            model_normal: mesh_vertex.normal,
+            mesh_id,
+            _pad: [0; _],
         }
     }
 }
