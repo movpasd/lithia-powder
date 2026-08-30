@@ -10,30 +10,38 @@ use sdl3::keyboard::Keycode;
 fn main() {
     let sdl = sdl3::init().unwrap();
 
-    // GPU resources and declaration
-    let mut gfx_state = gfx::State::new(&sdl);
-    println!(
-        "GPU device name: {}",
-        gfx_state.get_gpu_model_name().to_str().unwrap()
-    );
+    // cube definition
+    const CUBE_COUNT: usize = 6;
+    let meshes: Vec<meshobj::Mesh<Vec4>> =
+        (0..CUBE_COUNT).map(|_| meshobj::colorful_cube()).collect();
+    let mut poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
-    // geometry data
-    let meshes: Vec<meshobj::Mesh<Vec4>> = vec![
-        meshobj::colorful_cube(),
-        meshobj::colorful_cube(),
-        meshobj::colorful_cube(),
-    ];
-    let mut poses: Vec<gfx::Pose> = vec![
-        gfx::Pose::default(),
-        gfx::Pose {
-            position: vec3(-3.0, 0.0, 0.0),
-            rotation: Quat::default(),
-        },
-        gfx::Pose {
-            position: vec3(-1.5, 3.0, 0.0),
-            rotation: Quat::default(),
-        },
-    ];
+    let cube_anims: Vec<_> = (0..CUBE_COUNT)
+        .map(|i| {
+            let length_secs = 3.2;
+            let wait_secs = 0.2;
+            let total_secs = 2.0 * (length_secs + wait_secs);
+            let distance = 8.0;
+            let height = 9.0;
+            let flip_count = 3.0;
+
+            let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
+            let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
+
+            let somersault = somersault_anim(
+                distance * Vec3::X.rotate_z(angle),
+                Vec3::ZERO,
+                height,
+                length_secs,
+                flip_count,
+            );
+            somersault
+                .then_pause(wait_secs)
+                .then(&somersault.reversed())
+                .then_pause(wait_secs)
+                .loop_shifted(shift)
+        })
+        .collect();
 
     // camera data
     let mut camera = gfx::Camera {
@@ -43,33 +51,15 @@ fn main() {
         aspect_ratio: 1920.0 / 1080.0,
     };
 
+    // GPU resources and declaration
+    let mut gfx_state = gfx::State::new(&sdl);
+    println!(
+        "GPU device name: {}",
+        gfx_state.get_gpu_model_name().to_str().unwrap()
+    );
+
     // mesh data upload
     gfx_state.update_meshes(&meshes);
-
-    // animation preparation
-    let cube_anims = [0, 1, 2].map(|i| {
-        let length_secs = 1.25;
-        let wait_secs = 0.2;
-        let total_secs = 2.0 * (length_secs + wait_secs);
-        let distance = 3.0;
-        let height = 4.0;
-
-        let angle = i as f32 * 120_f32.to_radians();
-        let shift = i as f32 * total_secs / 3.0;
-
-        let somersault = somersault_anim(
-            distance * Vec3::X.rotate_z(angle),
-            Vec3::ZERO,
-            height,
-            length_secs,
-            1.0,
-        );
-        somersault
-            .then_pause(wait_secs)
-            .then(&somersault.reversed())
-            .then_pause(wait_secs)
-            .loop_shifted(shift)
-    });
 
     // event loop
     let start_time = Instant::now();
@@ -100,7 +90,7 @@ fn main() {
             {
                 const ORBIT_PERIOD: f32 = 40.0;
                 const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
-                const ORBIT_HEIGHT: f32 = 7.0;
+                const ORBIT_HEIGHT: f32 = 17.0;
                 const ORBIT_PHASE_INIT: f32 = 0.0;
                 const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
