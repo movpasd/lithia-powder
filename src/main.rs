@@ -64,7 +64,6 @@ fn main() {
             length_secs,
             1.0,
         );
-        dbg!(&somersault.reversed());
         somersault
             .then_pause(wait_secs)
             .then(&somersault.reversed())
