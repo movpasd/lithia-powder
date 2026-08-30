@@ -25,6 +25,7 @@ pub struct State {
     dbuf: Texture<'static>,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
+    mesh_data_sbuf: Buffer,
     mesh_buf_entries: Vec<MeshBufferEntry>,
 }
 impl State {
@@ -78,6 +79,12 @@ impl State {
             .with_size(mesh_ibuf.len())
             .build()
             .unwrap();
+        let mesh_data_sbuf = device
+            .create_buffer()
+            .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
+            .with_size(1_024 * 1_024)
+            .build()
+            .unwrap();
 
         State {
             window,
@@ -88,6 +95,7 @@ impl State {
             dbuf,
             tbuf1,
             tbuf2,
+            mesh_data_sbuf,
             mesh_buf_entries: vec![],
         }
     }
@@ -124,6 +132,7 @@ impl State {
                     ShaderStage::Vertex,
                 )
                 .with_uniform_buffers(3)
+                .with_storage_buffers(1)
                 .build()
                 .unwrap();
 
@@ -266,59 +275,92 @@ impl State {
                 .with_clear_color(Color::RGB(127, 127, 127))
         };
 
-        let render_pass = self
-            .device
-            .begin_render_pass(
-                &cbuf,
-                &[color_target_info],
-                Some(
-                    &DepthStencilTargetInfo::new()
-                        .with_texture(&mut self.dbuf)
-                        .with_clear_depth(1.0)
-                        .with_load_op(LoadOp::CLEAR)
-                        .with_store_op(StoreOp::DONT_CARE)
-                        .with_stencil_load_op(LoadOp::DONT_CARE)
-                        .with_stencil_store_op(StoreOp::DONT_CARE)
-                        .with_cycle(true),
-                ),
-            )
-            .unwrap();
+        // upload pose data to storage buffer
         {
-            render_pass.bind_graphics_pipeline(&self.pipeline);
-            render_pass
-                .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.mesh_vbuf)]);
-            render_pass.bind_index_buffer(
-                &BufferBinding::new().with_buffer(&self.mesh_ibuf),
-                IndexElementSize::_32BIT,
-            );
-
-            let u_camera = UCamera::from_camera(camera);
-            let u_lamp = ULamp {
-                from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
+            let pose_transforms = {
+                let mut pose_transforms = [Mat4::ZERO; _];
+                for (i, pose) in poses.iter().enumerate() {
+                    pose_transforms[i] = pose.transform();
+                }
+                pose_transforms
             };
-            cbuf.push_vertex_uniform_data(0, &u_camera);
-            cbuf.push_vertex_uniform_data(1, &u_lamp);
-            cbuf.push_fragment_uniform_data(0, &u_camera);
-            cbuf.push_fragment_uniform_data(1, &u_lamp);
+            // ensure that tbuf1 has enough room for at least 1 SMeshData before copying it over
+            assert!(self.tbuf1.len() >= size_of::<SMeshData>() as u32);
+            self.tbuf1.map::<SMeshData>(&self.device, true).mem_mut()[0] =
+                SMeshData { pose_transforms };
 
-            for (
-                &MeshBufferEntry {
-                    first_index: ibuf_offset,
-                    num_indices: ibuf_count,
-                    vertex_offset: vbuf_offset,
-                },
-                pose,
-            ) in itertools::izip![self.mesh_buf_entries.iter(), poses.iter()]
-            {
-                let u_pose = UPose {
-                    transform: pose.transform(),
-                };
-                cbuf.push_vertex_uniform_data(2, &u_pose);
-
-                render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
-            }
+            let pose_upload_pass = self.device.begin_copy_pass(&cbuf).unwrap();
+            pose_upload_pass.upload_to_gpu_buffer(
+                TransferBufferLocation::new()
+                    .with_transfer_buffer(&self.tbuf1)
+                    .with_offset(0),
+                BufferRegion::new()
+                    .with_buffer(&self.mesh_data_sbuf)
+                    .with_offset(0)
+                    .with_size(size_of::<SMeshData>() as u32),
+                true,
+            );
+            self.device.end_copy_pass(pose_upload_pass);
         }
-        self.device.end_render_pass(render_pass);
+
+        // render pass
+        {
+            let render_pass = self
+                .device
+                .begin_render_pass(
+                    &cbuf,
+                    &[color_target_info],
+                    Some(
+                        &DepthStencilTargetInfo::new()
+                            .with_texture(&mut self.dbuf)
+                            .with_clear_depth(1.0)
+                            .with_load_op(LoadOp::CLEAR)
+                            .with_store_op(StoreOp::DONT_CARE)
+                            .with_stencil_load_op(LoadOp::DONT_CARE)
+                            .with_stencil_store_op(StoreOp::DONT_CARE)
+                            .with_cycle(true),
+                    ),
+                )
+                .unwrap();
+            {
+                render_pass.bind_graphics_pipeline(&self.pipeline);
+                render_pass
+                    .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.mesh_vbuf)]);
+                render_pass.bind_index_buffer(
+                    &BufferBinding::new().with_buffer(&self.mesh_ibuf),
+                    IndexElementSize::_32BIT,
+                );
+                render_pass
+                    .bind_vertex_storage_buffers(0, std::slice::from_ref(&self.mesh_data_sbuf));
+
+                let u_camera = UCamera::from_camera(camera);
+                let u_lamp = ULamp {
+                    from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
+                };
+                cbuf.push_vertex_uniform_data(0, &u_camera);
+                cbuf.push_vertex_uniform_data(1, &u_lamp);
+                cbuf.push_fragment_uniform_data(0, &u_camera);
+                cbuf.push_fragment_uniform_data(1, &u_lamp);
+
+                for (
+                    &MeshBufferEntry {
+                        first_index: ibuf_offset,
+                        num_indices: ibuf_count,
+                        vertex_offset: vbuf_offset,
+                    },
+                    pose,
+                ) in itertools::izip![self.mesh_buf_entries.iter(), poses.iter()]
+                {
+                    let u_pose = UPose {
+                        transform: pose.transform(),
+                    };
+                    cbuf.push_vertex_uniform_data(2, &u_pose);
+
+                    render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
+                }
+            }
+            self.device.end_render_pass(render_pass);
+        }
 
         cbuf.submit().unwrap();
     }
@@ -406,7 +448,7 @@ impl Camera {
     }
 }
 
-#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct UCamera {
     world_position: Vec4,
@@ -424,15 +466,24 @@ impl UCamera {
         }
     }
 }
-#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct ULamp {
     from_direction: Vec4,
 }
-#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct UPose {
     transform: Mat4,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+struct SMeshData {
+    pose_transforms: [Mat4; Self::MAX_MESHES as usize],
+}
+impl SMeshData {
+    const MAX_MESHES: u32 = 1024;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
