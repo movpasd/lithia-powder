@@ -9,9 +9,6 @@ layout(std140, set = 1, binding = 0) uniform UCamera {
 layout(std140, set = 1, binding = 1) uniform ULamp {
     vec4 fromDirection;
 } uLamp;
-layout(std140, set = 1, binding = 2) uniform UPose {
-    mat4 transform;
-} uPose;
 
 const uint MAX_MESHES = 1024;
 layout(std140, set = 0, binding = 0) buffer BMeshData {

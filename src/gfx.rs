@@ -131,7 +131,7 @@ impl State {
                     vertex_ir.as_binary_u8(),
                     ShaderStage::Vertex,
                 )
-                .with_uniform_buffers(3)
+                .with_uniform_buffers(2)
                 .with_storage_buffers(1)
                 .build()
                 .unwrap();
@@ -342,20 +342,12 @@ impl State {
                 cbuf.push_fragment_uniform_data(0, &u_camera);
                 cbuf.push_fragment_uniform_data(1, &u_lamp);
 
-                for (
-                    &MeshBufferEntry {
-                        first_index: ibuf_offset,
-                        num_indices: ibuf_count,
-                        vertex_offset: vbuf_offset,
-                    },
-                    pose,
-                ) in itertools::izip![self.mesh_buf_entries.iter(), poses.iter()]
+                for &MeshBufferEntry {
+                    first_index: ibuf_offset,
+                    num_indices: ibuf_count,
+                    vertex_offset: vbuf_offset,
+                } in self.mesh_buf_entries.iter()
                 {
-                    let u_pose = UPose {
-                        transform: pose.transform(),
-                    };
-                    cbuf.push_vertex_uniform_data(2, &u_pose);
-
                     render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
                 }
             }
@@ -470,11 +462,6 @@ impl UCamera {
 #[repr(C)]
 struct ULamp {
     from_direction: Vec4,
-}
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct UPose {
-    transform: Mat4,
 }
 
 #[derive(Debug, Clone, Copy)]
