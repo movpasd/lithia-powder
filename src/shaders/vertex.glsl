@@ -32,8 +32,9 @@ layout(location = 3) out vec4 sWorldNormal;
 void main() {
     sColor = vColor;
 
-    vec4 worldPosition = uPose.transform * vModelPosition;
-    vec4 worldNormal = uPose.transform * vModelNormal;
+    mat4 poseTransform = bMeshData.poseTransforms[vMeshId];
+    vec4 worldPosition = poseTransform * vModelPosition;
+    vec4 worldNormal = poseTransform * vModelNormal;
     vec4 clipPosition = uCamera.viewPerspective * worldPosition;
     gl_Position = clipPosition;
     sWorldPosition = worldPosition;
