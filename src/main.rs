@@ -55,11 +55,15 @@ fn main() {
     );
 
     // camera data
-    let mut aspect_ratio = {
-        let (width, height) = gfx_state.get_window_size();
-        width / height
-    };
-    let mut camera_anim = camera_orbit_anim(aspect_ratio);
+    let mut camera_anim = obanim::Anim::<gfx::Camera>::default();
+    fn update_camera_anim(camera_anim: &mut obanim::Anim<gfx::Camera>, gfx_state: &gfx::State) {
+        let aspect_ratio = {
+            let (width, height) = gfx_state.get_retina_size();
+            width / height
+        };
+        *camera_anim = camera_orbit_anim(aspect_ratio);
+    }
+    update_camera_anim(&mut camera_anim, &gfx_state);
 
     // mesh data upload
     {
@@ -90,10 +94,9 @@ fn main() {
                 sdl3::event::Event::Window {
                     timestamp: _,
                     window_id: _,
-                    win_event: sdl3::event::WindowEvent::Resized(width, height),
+                    win_event: sdl3::event::WindowEvent::Resized(_, _),
                 } => {
-                    aspect_ratio = width as f32 / height as f32;
-                    camera_anim = camera_orbit_anim(aspect_ratio);
+                    update_camera_anim(&mut camera_anim, &gfx_state);
                 }
                 _ => {}
             }
