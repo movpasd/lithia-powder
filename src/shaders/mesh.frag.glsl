@@ -1,11 +1,11 @@
 #version 460 core
 #pragma shader_stage(fragment)
 
-layout(std140, set = 3, binding = 0) uniform UCamera {
+layout(std140, set = 3, binding = 0) uniform UEyeball {
     vec4 worldPosition;
     mat4 view;
     mat4 viewPerspective;
-} uCamera;
+} uEyeball;
 layout(std140, set = 3, binding = 1) uniform ULamp {
     vec4 fromDirection;
 } uLamp;
@@ -32,8 +32,8 @@ void main() {
     vec4 lampReflectionDir =
         2.0 * dot(uLamp.fromDirection, sWorldNormal) * sWorldNormal
         - uLamp.fromDirection;
-    vec4 fragToCameraDir = normalize(uCamera.worldPosition - sWorldPosition);
-    float angleFromSpecularHighlight = acos(dot(lampReflectionDir, fragToCameraDir));
+    vec4 fragToEyeballDir = normalize(uEyeball.worldPosition - sWorldPosition);
+    float angleFromSpecularHighlight = acos(dot(lampReflectionDir, fragToEyeballDir));
     float highlightIntensity = max(0.0, 1.0 - angleFromSpecularHighlight / HIGHLIGHT_ANGLE_WIDTH);
     highlightIntensity = pow(highlightIntensity, 3.0);
 

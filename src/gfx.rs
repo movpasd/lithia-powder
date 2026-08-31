@@ -20,16 +20,17 @@ const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const MAX_SCREEN_WIDTH: u32 = 1920;
 const MAX_SCREEN_HEIGHT: u32 = 1080;
-const RETINA_WIDTH: f32 = 240.0;
-const RETINA_HEIGHT: f32 = 180.0;
-const RETINA_TO_SCREEN_SCALE: f32 = 6.0;
+const RETINA_WIDTH: f32 = 320.0;
+const RETINA_HEIGHT: f32 = 240.0;
+const RETINA_TO_SCREEN_SCALE: f32 = 4.0;
 
 pub struct State {
     window: Window,
     retina: Retina,
     device: Device,
     pipeline: GraphicsPipeline,
-    off_screen_surface: Texture<'static>,
+    /// represents luminance from mesh renderer onto eyeball's retina
+    retinal_mesh_surface: Texture<'static>,
     mesh_vbuf: Buffer,
     mesh_ibuf: Buffer,
     dbuf: Texture<'static>,
@@ -60,7 +61,7 @@ impl State {
         let pipeline = Self::new_render_pipeline(&device, swapchain_texture_format);
 
         // resource creation
-        let off_screen_surface = device
+        let retinal_mesh_surface = device
             .create_texture(
                 TextureCreateInfo::new()
                     .with_type(TextureType::_2D)
@@ -122,7 +123,7 @@ impl State {
             retina,
             device,
             pipeline,
-            off_screen_surface,
+            retinal_mesh_surface,
             mesh_vbuf,
             mesh_ibuf,
             dbuf,
@@ -292,7 +293,7 @@ impl State {
         self.mesh_buf_entries = mesh_buf_entries;
     }
 
-    pub fn render<'a>(&mut self, camera: &Camera, poses: impl IntoIterator<Item = &'a Pose>) {
+    pub fn render<'a>(&mut self, eyeball: &Eyeball, poses: impl IntoIterator<Item = &'a Pose>) {
         let mut cbuf = self.device.acquire_command_buffer().unwrap();
 
         // upload pose data to storage buffer
@@ -348,7 +349,7 @@ impl State {
                 .begin_render_pass(
                     &cbuf,
                     &[ColorTargetInfo::default()
-                        .with_texture(&self.off_screen_surface)
+                        .with_texture(&self.retinal_mesh_surface)
                         .with_clear_color(Color::RGB(127, 127, 127))
                         .with_load_op(LoadOp::CLEAR)],
                     Some(
@@ -379,13 +380,13 @@ impl State {
                 render_pass
                     .bind_vertex_storage_buffers(0, std::slice::from_ref(&self.mesh_data_sbuf));
 
-                let u_camera = UCamera::from_camera(camera);
+                let u_eyeball = UEyeball::from_eyeball(eyeball);
                 let u_lamp = ULamp {
                     from_direction: vec4(-1.0, -2.0, 2.0, 0.0).normalize(),
                 };
-                cbuf.push_vertex_uniform_data(0, &u_camera);
+                cbuf.push_vertex_uniform_data(0, &u_eyeball);
                 cbuf.push_vertex_uniform_data(1, &u_lamp);
-                cbuf.push_fragment_uniform_data(0, &u_camera);
+                cbuf.push_fragment_uniform_data(0, &u_eyeball);
                 cbuf.push_fragment_uniform_data(1, &u_lamp);
 
                 for &MeshBufferEntry {
@@ -425,7 +426,7 @@ impl State {
             };
 
             blit = blit
-                .with_source_texture(&self.off_screen_surface)
+                .with_source_texture(&self.retinal_mesh_surface)
                 .with_source_region(0, src_x, src_y, src_w, src_h)
                 .with_source_mip(0)
                 .with_destination_region(0, dest_x, dest_y, dest_w, dest_h)
@@ -507,13 +508,13 @@ impl GpuVertex {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Camera {
+pub struct Eyeball {
     pub position: Vec3,
     pub facing: Vec3,
     pub fov: f32,
     pub aspect_ratio: f32,
 }
-impl Camera {
+impl Eyeball {
     fn perspective(&self) -> Mat4 {
         // nb: SDL_GPU uses DirectX-like convention
         glam::camera::rh::proj::directx::perspective(self.fov, self.aspect_ratio, 0.1, 200.0)
@@ -522,7 +523,7 @@ impl Camera {
         glam::camera::rh::view::look_to_mat4(self.position, self.facing, vec3(0.0, 0.0, 1.0))
     }
 }
-impl Default for Camera {
+impl Default for Eyeball {
     fn default() -> Self {
         Self {
             position: Vec3::ZERO,
@@ -535,17 +536,17 @@ impl Default for Camera {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-struct UCamera {
+struct UEyeball {
     world_position: Vec4,
     view: Mat4,
     view_perspective: Mat4,
 }
-impl UCamera {
-    fn from_camera(camera: &Camera) -> Self {
-        let perspective = camera.perspective();
-        let view = camera.view();
+impl UEyeball {
+    fn from_eyeball(eyeball: &Eyeball) -> Self {
+        let perspective = eyeball.perspective();
+        let view = eyeball.view();
         Self {
-            world_position: camera.position.extend(1.0),
+            world_position: eyeball.position.extend(1.0),
             view,
             view_perspective: perspective * view,
         }
@@ -577,8 +578,8 @@ impl Pose {
     }
 }
 
-/// represents the surface which the camera sees, and provides utilities for sizing that
-/// onto a screen
+/// represents the surface which the eyeball sees, and provides utilities for sizing
+/// that onto a screen
 ///
 /// the logic herein supports pixel-perfect blitting, preferring to cut pixels off
 /// rather than distort.

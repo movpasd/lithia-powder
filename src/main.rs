@@ -54,16 +54,16 @@ fn main() {
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
 
-    // camera data
-    let mut camera_anim = obanim::Anim::<gfx::Camera>::default();
-    fn update_camera_anim(camera_anim: &mut obanim::Anim<gfx::Camera>, gfx_state: &gfx::State) {
+    // eyeball data
+    let mut eyeball_anim = obanim::Anim::<gfx::Eyeball>::default();
+    fn update_eyeball_anim(eyeball_anim: &mut obanim::Anim<gfx::Eyeball>, gfx_state: &gfx::State) {
         let aspect_ratio = {
             let (width, height) = gfx_state.get_retina_size();
             width / height
         };
-        *camera_anim = camera_orbit_anim(aspect_ratio);
+        *eyeball_anim = eyeball_orbit_anim(aspect_ratio);
     }
-    update_camera_anim(&mut camera_anim, &gfx_state);
+    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
 
     // mesh data upload
     {
@@ -96,14 +96,14 @@ fn main() {
                     window_id: _,
                     win_event: sdl3::event::WindowEvent::Resized(_, _),
                 } => {
-                    update_camera_anim(&mut camera_anim, &gfx_state);
+                    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
                 }
                 _ => {}
             }
         }
 
         // logic
-        let camera = camera_anim.sample(elapsed_time_secs);
+        let eyeball = eyeball_anim.sample(elapsed_time_secs);
 
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
@@ -113,7 +113,7 @@ fn main() {
         {
             let floor_pose_container = [floor_pose];
             let poses = floor_pose_container.iter().chain(&cube_poses);
-            gfx_state.render(&camera, poses);
+            gfx_state.render(&eyeball, poses);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));
@@ -148,14 +148,14 @@ fn somersault_anim(
         .stretched(length_secs)
 }
 
-fn camera_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Camera> {
+fn eyeball_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Eyeball> {
     const FOV: f32 = 70.0f32.to_radians();
 
     const ORBIT_PERIOD: f32 = 40.0;
     const ORBIT_BIRDSEYE_DISTANCE: f32 = 7.0;
     const ORBIT_HEIGHT: f32 = 4.0;
     const ORBIT_PHASE_INIT: f32 = -15_f32.to_radians();
-    const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
+    const EYEBALL_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
     obanim::Anim::func(ORBIT_PERIOD, move |t| {
         let orbit_phase = ORBIT_PHASE_INIT + TAU * t / ORBIT_PERIOD;
@@ -164,9 +164,9 @@ fn camera_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Camera> {
             ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
             ORBIT_HEIGHT,
         );
-        let facing = (CAMERA_LOOK_AT - position).normalize();
+        let facing = (EYEBALL_LOOK_AT - position).normalize();
 
-        gfx::Camera {
+        gfx::Eyeball {
             position,
             facing,
             fov: FOV,
