@@ -11,19 +11,19 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // cube definition
-    const CUBE_COUNT: usize = 6;
+    const CUBE_COUNT: usize = 3;
     let meshes: Vec<meshobj::Mesh<Vec4>> =
         (0..CUBE_COUNT).map(|_| meshobj::colorful_cube()).collect();
     let mut poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
         .map(|i| {
-            let length_secs = 3.2;
+            let length_secs = 1.5;
             let wait_secs = 0.2;
             let total_secs = 2.0 * (length_secs + wait_secs);
-            let distance = 8.0;
-            let height = 9.0;
-            let flip_count = 3.0;
+            let distance = 4.0;
+            let height = 3.0;
+            let flip_count = 1.5;
 
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
             let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
@@ -135,8 +135,8 @@ fn camera_orbit_anim(aspect_ratio: f32) -> animobj::Anim<gfx::Camera> {
     const FOV: f32 = 70.0f32.to_radians();
 
     const ORBIT_PERIOD: f32 = 40.0;
-    const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
-    const ORBIT_HEIGHT: f32 = 17.0;
+    const ORBIT_BIRDSEYE_DISTANCE: f32 = 7.0;
+    const ORBIT_HEIGHT: f32 = 4.0;
     const ORBIT_PHASE_INIT: f32 = 0.0;
     const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
