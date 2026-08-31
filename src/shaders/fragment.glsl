@@ -19,13 +19,14 @@ layout(location = 0) out vec4 fColor;
 
 
 const float AMBIENT_ILLUMINATION = 0.33;
-const float FULLY_LIT_MULTIPLIER = 1.4;
+const float FULL_ILLUMINATION_THRESHOLD = 0.85;
+const float FULLY_LIT_MULTIPLIER = 1.0;
 
 const float GLARE_ANGLE = radians(15.0);
-const float GLARE_MULTIPLIER = 0.75;
+const float GLARE_MULTIPLIER = 0.4;
 
 void main() {
-    float finalIllumination = max(AMBIENT_ILLUMINATION, sLampIllumination);
+    float finalIllumination = clamp(sLampIllumination / FULL_ILLUMINATION_THRESHOLD, AMBIENT_ILLUMINATION, 1.0);
     float lightingMultiplier = FULLY_LIT_MULTIPLIER * pow(finalIllumination, 0.85);
 
     vec4 lampReflectionDir =

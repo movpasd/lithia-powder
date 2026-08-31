@@ -24,7 +24,8 @@ fn main() {
             let total_secs = 2.0 * (length_secs + wait_secs);
             let distance = 4.0;
             let height = 3.0;
-            let flip_count = 1.5;
+            let flip_count = 1.0;
+            let twist_count = 0.5;
 
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
             let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
@@ -36,6 +37,7 @@ fn main() {
                 height,
                 length_secs,
                 flip_count,
+                twist_count,
             );
             somersault
                 .then_pause(wait_secs)
@@ -121,6 +123,7 @@ fn somersault_anim(
     bounce_height: f32,
     length_secs: f32,
     flip_count: f32,
+    twist_count: f32,
 ) -> obanim::Anim<gfx::Pose> {
     obanim::f32::parabola()
         .map_indexed(move |t, s| {
@@ -132,9 +135,10 @@ fn somersault_anim(
             let facing = (end_position - start_position).xy().normalize();
             let facing_rotation = Quat::from_rotation_arc_2d(Vec2::X, facing);
 
+            let twist_rotation = Quat::from_rotation_x(TAU * t * twist_count);
             let flip_rotation = Quat::from_rotation_y(TAU * t * flip_count);
 
-            let rotation = facing_rotation * flip_rotation;
+            let rotation = facing_rotation * flip_rotation * twist_rotation;
 
             gfx::Pose { position, rotation }
         })
