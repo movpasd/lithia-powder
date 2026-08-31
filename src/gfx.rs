@@ -732,7 +732,8 @@ impl GpuSkyboxVertex {
         ];
         let inv_view = eyeball.view().transpose();
         let inv_persp = eyeball.perspective().inverse();
-        let world_normals = ndc_positions.map(|ndc_pos| inv_view * inv_persp * ndc_pos);
+        let world_normals =
+            ndc_positions.map(|ndc_pos| (inv_view * inv_persp * ndc_pos).with_w(0.0));
 
         let skybox_vertexes: [Self; 4] = std::array::from_fn(|i| Self {
             ndc_position: ndc_positions[i],
