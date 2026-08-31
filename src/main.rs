@@ -43,20 +43,19 @@ fn main() {
         })
         .collect();
 
-    // camera data
-    let mut camera = gfx::Camera {
-        position: Vec3::ZERO,
-        facing: vec3(1.0, 0.0, 0.0),
-        fov: 70.0f32.to_radians(),
-        aspect_ratio: 1920.0 / 1080.0,
-    };
-
     // GPU resources and declaration
     let mut gfx_state = gfx::State::new(&sdl);
     println!(
         "GPU device name: {}",
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
+
+    // camera data
+    let mut aspect_ratio = {
+        let (width, height) = gfx_state.get_window_size();
+        width / height
+    };
+    let mut camera_anim = camera_orbit_anim(aspect_ratio);
 
     // mesh data upload
     gfx_state.update_meshes(&meshes);
@@ -80,40 +79,23 @@ fn main() {
                 } => {
                     break 'main_loop;
                 }
+                sdl3::event::Event::Window {
+                    timestamp: _,
+                    window_id: _,
+                    win_event: sdl3::event::WindowEvent::Resized(width, height),
+                } => {
+                    aspect_ratio = width as f32 / height as f32;
+                    camera_anim = camera_orbit_anim(aspect_ratio);
+                }
                 _ => {}
             }
         }
 
         // logic
-        {
-            // camera stuff
-            {
-                const ORBIT_PERIOD: f32 = 40.0;
-                const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
-                const ORBIT_HEIGHT: f32 = 17.0;
-                const ORBIT_PHASE_INIT: f32 = 0.0;
-                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
+        let camera = camera_anim.sample(elapsed_time_secs);
 
-                let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
-                let position = vec3(
-                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
-                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
-                    ORBIT_HEIGHT,
-                );
-                let facing = (CAMERA_LOOK_AT - position).normalize();
-
-                let (width, height) = gfx_state.get_window_size();
-                let aspect_ratio = width / height;
-
-                camera.position = position;
-                camera.facing = facing;
-                camera.aspect_ratio = aspect_ratio;
-            }
-
-            // cube animation
-            for (pose, anim) in poses.iter_mut().zip(&cube_anims) {
-                *pose = anim.sample_looped(elapsed_time_secs);
-            }
+        for (pose, anim) in poses.iter_mut().zip(&cube_anims) {
+            *pose = anim.sample_looped(elapsed_time_secs);
         }
 
         // render
@@ -147,6 +129,33 @@ fn somersault_anim(
             gfx::Pose { position, rotation }
         })
         .stretched(length_secs)
+}
+
+fn camera_orbit_anim(aspect_ratio: f32) -> animobj::Anim<gfx::Camera> {
+    const FOV: f32 = 70.0f32.to_radians();
+
+    const ORBIT_PERIOD: f32 = 40.0;
+    const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
+    const ORBIT_HEIGHT: f32 = 17.0;
+    const ORBIT_PHASE_INIT: f32 = 0.0;
+    const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
+
+    animobj::Anim::func(ORBIT_PERIOD, move |t| {
+        let orbit_phase = ORBIT_PHASE_INIT + TAU * t / ORBIT_PERIOD;
+        let position = vec3(
+            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
+            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
+            ORBIT_HEIGHT,
+        );
+        let facing = (CAMERA_LOOK_AT - position).normalize();
+
+        gfx::Camera {
+            position,
+            facing,
+            fov: FOV,
+            aspect_ratio,
+        }
+    })
 }
 
 #[allow(dead_code)]
