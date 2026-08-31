@@ -1,11 +1,11 @@
 #version 460 core
 #pragma shader_stage(vertex)
 
-layout(std140, set = 1, binding = 0) uniform UCamera {
+layout(std140, set = 1, binding = 0) uniform UEyeball {
     vec4 worldPosition;
     mat4 view;
     mat4 viewPerspective;
-} uCamera;
+} uEyeball;
 layout(std140, set = 1, binding = 1) uniform ULamp {
     vec4 fromDirection;
 } uLamp;
@@ -32,7 +32,7 @@ void main() {
     mat4 poseTransform = bMeshData.poseTransforms[vMeshId];
     vec4 worldPosition = poseTransform * vModelPosition;
     vec4 worldNormal = poseTransform * vModelNormal;
-    vec4 clipPosition = uCamera.viewPerspective * worldPosition;
+    vec4 clipPosition = uEyeball.viewPerspective * worldPosition;
     gl_Position = clipPosition;
     sWorldPosition = worldPosition;
     sWorldNormal = worldNormal;

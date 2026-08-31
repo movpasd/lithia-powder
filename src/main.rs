@@ -1,39 +1,43 @@
-mod animobj;
 mod gfx;
-mod meshobj;
+mod obanim;
+mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles};
 use sdl3::keyboard::Keycode;
 
 fn main() {
     let sdl = sdl3::init().unwrap();
 
     // cube definition
-    const CUBE_COUNT: usize = 6;
-    let meshes: Vec<meshobj::Mesh<Vec4>> =
-        (0..CUBE_COUNT).map(|_| meshobj::colorful_cube()).collect();
-    let mut poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
+    const CUBE_COUNT: usize = 3;
+    let floor_mesh = obmesh::floor();
+    let floor_pose = gfx::Pose::default();
+    let cube_meshes: Vec<_> = (0..CUBE_COUNT).map(|_| obmesh::colorful_cube()).collect();
+    let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
         .map(|i| {
-            let length_secs = 3.2;
+            let length_secs = 1.5;
             let wait_secs = 0.2;
             let total_secs = 2.0 * (length_secs + wait_secs);
-            let distance = 8.0;
-            let height = 9.0;
-            let flip_count = 3.0;
+            let distance = 4.0;
+            let height = 3.0;
+            let flip_count = 1.0;
+            let twist_count = 0.5;
 
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
             let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
 
+            let ground_offset = Vec3::Z * 0.5;
             let somersault = somersault_anim(
-                distance * Vec3::X.rotate_z(angle),
-                Vec3::ZERO,
+                distance * Vec3::X.rotate_z(angle) + ground_offset,
+                Vec3::ZERO + ground_offset,
                 height,
                 length_secs,
                 flip_count,
+                twist_count,
             );
             somersault
                 .then_pause(wait_secs)
@@ -43,14 +47,6 @@ fn main() {
         })
         .collect();
 
-    // camera data
-    let mut camera = gfx::Camera {
-        position: Vec3::ZERO,
-        facing: vec3(1.0, 0.0, 0.0),
-        fov: 70.0f32.to_radians(),
-        aspect_ratio: 1920.0 / 1080.0,
-    };
-
     // GPU resources and declaration
     let mut gfx_state = gfx::State::new(&sdl);
     println!(
@@ -58,8 +54,23 @@ fn main() {
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
 
+    // eyeball data
+    let mut eyeball_anim = obanim::Anim::<gfx::Eyeball>::default();
+    fn update_eyeball_anim(eyeball_anim: &mut obanim::Anim<gfx::Eyeball>, gfx_state: &gfx::State) {
+        let aspect_ratio = {
+            let (width, height) = gfx_state.get_retina_size();
+            width / height
+        };
+        *eyeball_anim = eyeball_orbit_anim(aspect_ratio);
+    }
+    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
+
     // mesh data upload
-    gfx_state.update_meshes(&meshes);
+    {
+        let floor_mesh_container = [floor_mesh];
+        let meshes = floor_mesh_container.iter().chain(&cube_meshes);
+        gfx_state.update_meshes(meshes);
+    }
 
     // event loop
     let start_time = Instant::now();
@@ -80,46 +91,32 @@ fn main() {
                 } => {
                     break 'main_loop;
                 }
+                sdl3::event::Event::Window {
+                    timestamp: _,
+                    window_id: _,
+                    win_event: sdl3::event::WindowEvent::Resized(_, _),
+                } => {
+                    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
+                }
                 _ => {}
             }
         }
 
         // logic
-        {
-            // camera stuff
-            {
-                const ORBIT_PERIOD: f32 = 40.0;
-                const ORBIT_BIRDSEYE_DISTANCE: f32 = 2.0;
-                const ORBIT_HEIGHT: f32 = 17.0;
-                const ORBIT_PHASE_INIT: f32 = 0.0;
-                const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
+        let eyeball = eyeball_anim.sample(elapsed_time_secs);
 
-                let orbit_phase = ORBIT_PHASE_INIT + TAU * elapsed_time_secs / ORBIT_PERIOD;
-                let position = vec3(
-                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
-                    ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
-                    ORBIT_HEIGHT,
-                );
-                let facing = (CAMERA_LOOK_AT - position).normalize();
-
-                let (width, height) = gfx_state.get_window_size();
-                let aspect_ratio = width / height;
-
-                camera.position = position;
-                camera.facing = facing;
-                camera.aspect_ratio = aspect_ratio;
-            }
-
-            // cube animation
-            for (pose, anim) in poses.iter_mut().zip(&cube_anims) {
-                *pose = anim.sample_looped(elapsed_time_secs);
-            }
+        for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
+            *pose = anim.sample_looped(elapsed_time_secs);
         }
 
         // render
-        gfx_state.render(&camera, &poses);
+        {
+            let floor_pose_container = [floor_pose];
+            let poses = floor_pose_container.iter().chain(&cube_poses);
+            gfx_state.render(&eyeball, poses);
+        }
 
-        std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
+        std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));
     }
 }
 
@@ -129,8 +126,9 @@ fn somersault_anim(
     bounce_height: f32,
     length_secs: f32,
     flip_count: f32,
-) -> animobj::Anim<gfx::Pose> {
-    animobj::f32::parabola()
+    twist_count: f32,
+) -> obanim::Anim<gfx::Pose> {
+    obanim::f32::parabola()
         .map_indexed(move |t, s| {
             // the "baseline" is the straight line between start_position to end_position
             let baseline = start_position + (end_position - start_position) * t;
@@ -140,13 +138,41 @@ fn somersault_anim(
             let facing = (end_position - start_position).xy().normalize();
             let facing_rotation = Quat::from_rotation_arc_2d(Vec2::X, facing);
 
+            let twist_rotation = Quat::from_rotation_x(TAU * t * twist_count);
             let flip_rotation = Quat::from_rotation_y(TAU * t * flip_count);
 
-            let rotation = facing_rotation * flip_rotation;
+            let rotation = facing_rotation * flip_rotation * twist_rotation;
 
             gfx::Pose { position, rotation }
         })
         .stretched(length_secs)
+}
+
+fn eyeball_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Eyeball> {
+    const FOV: f32 = 70.0f32.to_radians();
+
+    const ORBIT_PERIOD: f32 = 40.0;
+    const ORBIT_BIRDSEYE_DISTANCE: f32 = 7.0;
+    const ORBIT_HEIGHT: f32 = 4.0;
+    const ORBIT_PHASE_INIT: f32 = -15_f32.to_radians();
+    const EYEBALL_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
+
+    obanim::Anim::func(ORBIT_PERIOD, move |t| {
+        let orbit_phase = ORBIT_PHASE_INIT + TAU * t / ORBIT_PERIOD;
+        let position = vec3(
+            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
+            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
+            ORBIT_HEIGHT,
+        );
+        let facing = (EYEBALL_LOOK_AT - position).normalize();
+
+        gfx::Eyeball {
+            position,
+            facing,
+            fov: FOV,
+            aspect_ratio,
+        }
+    })
 }
 
 #[allow(dead_code)]
