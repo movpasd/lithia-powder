@@ -198,7 +198,7 @@ impl State {
     }
 
     /// starts a copy pass
-    pub fn update_meshes(&mut self, meshes: &[super::meshobj::Mesh<Vec4>]) {
+    pub fn update_meshes(&mut self, meshes: &[super::obmesh::Mesh<Vec4>]) {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
@@ -412,7 +412,7 @@ impl GpuVertex {
         ]
     }
 
-    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::meshobj::Vertex<Vec4>) -> Self {
+    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::obmesh::Vertex<Vec4>) -> Self {
         Self {
             model_position: mesh_vertex.position,
             color: mesh_vertex.data,

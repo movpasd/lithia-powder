@@ -1,6 +1,6 @@
-mod animobj;
 mod gfx;
-mod meshobj;
+mod obanim;
+mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
@@ -12,8 +12,8 @@ fn main() {
 
     // cube definition
     const CUBE_COUNT: usize = 3;
-    let meshes: Vec<meshobj::Mesh<Vec4>> =
-        (0..CUBE_COUNT).map(|_| meshobj::colorful_cube()).collect();
+    let meshes: Vec<obmesh::Mesh<Vec4>> =
+        (0..CUBE_COUNT).map(|_| obmesh::colorful_cube()).collect();
     let mut poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
@@ -111,8 +111,8 @@ fn somersault_anim(
     bounce_height: f32,
     length_secs: f32,
     flip_count: f32,
-) -> animobj::Anim<gfx::Pose> {
-    animobj::f32::parabola()
+) -> obanim::Anim<gfx::Pose> {
+    obanim::f32::parabola()
         .map_indexed(move |t, s| {
             // the "baseline" is the straight line between start_position to end_position
             let baseline = start_position + (end_position - start_position) * t;
@@ -131,7 +131,7 @@ fn somersault_anim(
         .stretched(length_secs)
 }
 
-fn camera_orbit_anim(aspect_ratio: f32) -> animobj::Anim<gfx::Camera> {
+fn camera_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Camera> {
     const FOV: f32 = 70.0f32.to_radians();
 
     const ORBIT_PERIOD: f32 = 40.0;
@@ -140,7 +140,7 @@ fn camera_orbit_anim(aspect_ratio: f32) -> animobj::Anim<gfx::Camera> {
     const ORBIT_PHASE_INIT: f32 = 0.0;
     const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
-    animobj::Anim::func(ORBIT_PERIOD, move |t| {
+    obanim::Anim::func(ORBIT_PERIOD, move |t| {
         let orbit_phase = ORBIT_PHASE_INIT + TAU * t / ORBIT_PERIOD;
         let position = vec3(
             ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
