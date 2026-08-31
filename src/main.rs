@@ -54,16 +54,16 @@ fn main() {
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
 
-    // eyeball data
-    let mut eyeball_anim = obanim::Anim::<gfx::Eyeball>::default();
-    fn update_eyeball_anim(eyeball_anim: &mut obanim::Anim<gfx::Eyeball>, gfx_state: &gfx::State) {
+    // player data
+    let mut player = Player::new();
+    fn updated_eyeball(player: &Player, gfx_state: &gfx::State) -> gfx::Eyeball {
         let aspect_ratio = {
             let (width, height) = gfx_state.get_retina_size();
             width / height
         };
-        *eyeball_anim = eyeball_orbit_anim(aspect_ratio);
+        player.eyeball(70_f32.to_radians(), aspect_ratio)
     }
-    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
+    let mut eyeball: gfx::Eyeball = updated_eyeball(&player, &gfx_state);
 
     // mesh data upload
     {
@@ -96,15 +96,13 @@ fn main() {
                     window_id: _,
                     win_event: sdl3::event::WindowEvent::Resized(_, _),
                 } => {
-                    update_eyeball_anim(&mut eyeball_anim, &gfx_state);
+                    eyeball = updated_eyeball(&player, &gfx_state);
                 }
                 _ => {}
             }
         }
 
         // logic
-        let eyeball = eyeball_anim.sample(elapsed_time_secs);
-
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
@@ -148,31 +146,28 @@ fn somersault_anim(
         .stretched(length_secs)
 }
 
-fn eyeball_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Eyeball> {
-    const FOV: f32 = 70.0f32.to_radians();
+#[derive(Debug, Clone)]
+struct Player {
+    position: Vec3,
+    facing: Vec3,
+}
+impl Player {
+    const EYE_HEIGHT: f32 = 1.7;
 
-    const ORBIT_PERIOD: f32 = 40.0;
-    const ORBIT_BIRDSEYE_DISTANCE: f32 = 7.0;
-    const ORBIT_HEIGHT: f32 = 4.0;
-    const ORBIT_PHASE_INIT: f32 = -15_f32.to_radians();
-    const EYEBALL_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
-
-    obanim::Anim::func(ORBIT_PERIOD, move |t| {
-        let orbit_phase = ORBIT_PHASE_INIT + TAU * t / ORBIT_PERIOD;
-        let position = vec3(
-            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.cos(),
-            ORBIT_BIRDSEYE_DISTANCE * orbit_phase.sin(),
-            ORBIT_HEIGHT,
-        );
-        let facing = (EYEBALL_LOOK_AT - position).normalize();
-
+    fn new() -> Self {
+        Self {
+            position: Vec3::ZERO,
+            facing: Vec3::X,
+        }
+    }
+    fn eyeball(&self, fov: f32, aspect_ratio: f32) -> gfx::Eyeball {
         gfx::Eyeball {
-            position,
-            facing,
-            fov: FOV,
+            position: self.position + Self::EYE_HEIGHT,
+            facing: self.facing,
+            fov,
             aspect_ratio,
         }
-    })
+    }
 }
 
 #[allow(dead_code)]
