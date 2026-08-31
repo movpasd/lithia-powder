@@ -4,7 +4,7 @@ mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles};
 use sdl3::keyboard::Keycode;
 
 fn main() {
@@ -12,9 +12,10 @@ fn main() {
 
     // cube definition
     const CUBE_COUNT: usize = 3;
-    let meshes: Vec<obmesh::Mesh<Vec4>> =
-        (0..CUBE_COUNT).map(|_| obmesh::colorful_cube()).collect();
-    let mut poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
+    let floor_mesh = obmesh::floor();
+    let floor_pose = gfx::Pose::default();
+    let cube_meshes: Vec<_> = (0..CUBE_COUNT).map(|_| obmesh::colorful_cube()).collect();
+    let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
         .map(|i| {
@@ -28,9 +29,10 @@ fn main() {
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
             let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
 
+            let ground_offset = Vec3::Z * 0.5;
             let somersault = somersault_anim(
-                distance * Vec3::X.rotate_z(angle),
-                Vec3::ZERO,
+                distance * Vec3::X.rotate_z(angle) + ground_offset,
+                Vec3::ZERO + ground_offset,
                 height,
                 length_secs,
                 flip_count,
@@ -58,7 +60,11 @@ fn main() {
     let mut camera_anim = camera_orbit_anim(aspect_ratio);
 
     // mesh data upload
-    gfx_state.update_meshes(&meshes);
+    {
+        let floor_mesh_container = [floor_mesh];
+        let meshes = floor_mesh_container.iter().chain(&cube_meshes);
+        gfx_state.update_meshes(meshes);
+    }
 
     // event loop
     let start_time = Instant::now();
@@ -94,14 +100,18 @@ fn main() {
         // logic
         let camera = camera_anim.sample(elapsed_time_secs);
 
-        for (pose, anim) in poses.iter_mut().zip(&cube_anims) {
+        for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
 
         // render
-        gfx_state.render(&camera, &poses);
+        {
+            let floor_pose_container = [floor_pose];
+            let poses = floor_pose_container.iter().chain(&cube_poses);
+            gfx_state.render(&camera, poses);
+        }
 
-        std::thread::sleep(std::time::Duration::from_millis(1_000 / 60))
+        std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));
     }
 }
 

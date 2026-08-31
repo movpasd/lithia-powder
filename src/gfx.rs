@@ -198,14 +198,17 @@ impl State {
     }
 
     /// starts a copy pass
-    pub fn update_meshes(&mut self, meshes: &[super::obmesh::Mesh<Vec4>]) {
+    pub fn update_meshes<'a>(
+        &mut self,
+        meshes: impl IntoIterator<Item = &'a super::obmesh::Mesh<Vec4>>,
+    ) {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
         let mut ibuf_data: Vec<u8> = vec![];
         let mut mesh_buf_entries = vec![];
         let mut next_first_index: u32 = 0;
         let mut next_vertex_offset: i32 = 0;
-        for (mesh_id, mesh) in meshes.iter().enumerate() {
+        for (mesh_id, mesh) in meshes.into_iter().enumerate() {
             let gpu_vertexes: Vec<_> = mesh
                 .vertexes
                 .iter()
@@ -259,7 +262,7 @@ impl State {
         self.mesh_buf_entries = mesh_buf_entries;
     }
 
-    pub fn render(&mut self, camera: &Camera, poses: &[Pose]) {
+    pub fn render<'a>(&mut self, camera: &Camera, poses: impl IntoIterator<Item = &'a Pose>) {
         let mut cbuf = self.device.acquire_command_buffer().unwrap();
 
         let color_target_info = {
@@ -279,7 +282,7 @@ impl State {
         {
             let pose_transforms = {
                 let mut pose_transforms = [Mat4::ZERO; _];
-                for (i, pose) in poses.iter().enumerate() {
+                for (i, pose) in poses.into_iter().enumerate() {
                     pose_transforms[i] = pose.transform();
                 }
                 pose_transforms
@@ -335,7 +338,7 @@ impl State {
 
                 let u_camera = UCamera::from_camera(camera);
                 let u_lamp = ULamp {
-                    from_direction: vec4(-3.0, 0.0, 1.0, 0.0).normalize(),
+                    from_direction: vec4(-1.0, -2.0, 3.0, 0.0).normalize(),
                 };
                 cbuf.push_vertex_uniform_data(0, &u_camera);
                 cbuf.push_vertex_uniform_data(1, &u_lamp);

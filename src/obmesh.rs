@@ -1,4 +1,4 @@
-use glam::{vec3, Mat4, Vec4};
+use glam::{vec3, vec4, Mat4, Vec4};
 
 /// (make sure your positions have w=1.0 and normals have w=0.0)
 #[derive(Debug, Clone)]
@@ -35,32 +35,49 @@ impl<D> Mesh<D> {
             v.normal = m * v.normal
         });
     }
-    pub fn map_data<D2, F>(&self, mut f: F) -> Mesh<D2>
+    pub fn map_data<D2, F>(self, mut f: F) -> Mesh<D2>
     where
-        F: FnMut(&D) -> D2,
+        F: FnMut(D) -> D2,
     {
         Mesh {
             vertexes: self
                 .vertexes
-                .iter()
+                .into_iter()
                 .map(|v| Vertex {
                     position: v.position,
                     normal: v.normal,
-                    data: f(&v.data),
+                    data: f(v.data),
                 })
                 .collect(),
             indexes: self.indexes.clone(),
         }
     }
+    pub fn map_positions<F>(self, mut f: F) -> Mesh<D>
+    where
+        F: FnMut(Vec4) -> Vec4,
+    {
+        Mesh {
+            vertexes: self
+                .vertexes
+                .into_iter()
+                .map(|v| Vertex {
+                    position: f(v.position),
+                    normal: v.normal,
+                    data: v.data,
+                })
+                .collect(),
+            indexes: self.indexes,
+        }
+    }
 }
 
-/// a unit square centred on the origin facing up (+Z)
+/// a unit square centred occupying x=0..1, y=0..1, z=0, facing up (+z)
 pub fn unit_square() -> Mesh<()> {
     let vertex_positions = [
-        [-0.5, -0.5, 0.0, 1.0],
-        [0.5, -0.5, 0.0, 1.0],
-        [-0.5, 0.5, 0.0, 1.0],
-        [0.5, 0.5, 0.0, 1.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0, 1.0, 0.0, 1.0],
     ];
     let vertex_normals = [
         [0.0, 0.0, 1.0, 0.0],
@@ -81,6 +98,7 @@ pub fn unit_square() -> Mesh<()> {
     Mesh { vertexes, indexes }
 }
 
+/// a colourful unit cube, centred on the origin (data is given as a RGBA Vec4)
 pub fn colorful_cube() -> Mesh<Vec4> {
     use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -93,10 +111,12 @@ pub fn colorful_cube() -> Mesh<Vec4> {
 
     let mut plus_z_face = {
         let mut i = 0;
-        unit_square().map_data(|_| {
-            i += 1;
-            Vec4::from_array(vertex_colors[i - 1])
-        })
+        unit_square()
+            .map_data(|_| {
+                i += 1;
+                Vec4::from_array(vertex_colors[i - 1])
+            })
+            .map_positions(|pos| pos + vec4(-0.5, -0.5, 0.0, 0.0))
     };
     plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
 
@@ -121,4 +141,20 @@ pub fn colorful_cube() -> Mesh<Vec4> {
     cube
 }
 
-// pub fn floor() -> Mesh<Vec4> {}
+pub fn floor() -> Mesh<Vec4> {
+    let mut mesh = Mesh::new_empty();
+    itertools::iproduct!(-10..10, -10..10).for_each(|(i, j)| {
+        const LIGHT_COLOUR: Vec4 = vec4(180.0 / 255.0, 175.0 / 255.0, 165.0 / 255.0, 1.0);
+        const DARK_COLOUR: Vec4 = vec4(145.0 / 255.0, 140.0 / 255.0, 125.0 / 255.0, 1.0);
+        let colour = if (i + j) % 2 == 0 {
+            LIGHT_COLOUR
+        } else {
+            DARK_COLOUR
+        };
+        let mut square = unit_square()
+            .map_data(|_| colour)
+            .map_positions(|pos| pos + vec4(i as f32, j as f32, 0.0, 0.0));
+        mesh.append(&mut square)
+    });
+    mesh
+}
