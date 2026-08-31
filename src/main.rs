@@ -4,7 +4,7 @@ mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles, vec3};
+use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
 
 fn main() {
     let sdl = sdl3::init().unwrap();
@@ -63,7 +63,7 @@ fn main() {
     let mouse_subsystem = sdl.mouse();
     mouse_subsystem.set_relative_mouse_mode(gfx_state.window(), true);
 
-    // player data
+    // game data
     let mut player = Player::new_at_spawn();
     fn updated_eyeball(player: &Player, gfx_state: &gfx::State) -> gfx::Eyeball {
         let aspect_ratio = {
@@ -73,6 +73,9 @@ fn main() {
         player.eyeball(70_f32.to_radians(), aspect_ratio)
     }
     let mut eyeball: gfx::Eyeball;
+
+    let sunlight_anim = sunlight_anim();
+    let mut sunlight: gfx::Sunlight;
 
     // mesh data upload
     {
@@ -138,6 +141,7 @@ fn main() {
 
         // logic
         eyeball = updated_eyeball(&player, &gfx_state);
+        sunlight = sunlight_anim.sample(elapsed_time_secs);
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
@@ -146,7 +150,7 @@ fn main() {
         {
             let floor_pose_container = [floor_pose];
             let poses = floor_pose_container.iter().chain(&cube_poses);
-            gfx_state.render(&eyeball, poses);
+            gfx_state.render(&eyeball, poses, &sunlight);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));
@@ -179,6 +183,28 @@ fn somersault_anim(
             gfx::Pose { position, rotation }
         })
         .stretched(length_secs)
+}
+
+fn sunlight_anim() -> obanim::Anim<gfx::Sunlight> {
+    let swing_period = 120.0;
+    let arcs_per_swing = 10.0;
+    let arc_period = swing_period / arcs_per_swing;
+
+    let swing_anim = obanim::f32::usin()
+        .stretched(swing_period)
+        .map(|v| v * (80_f32.to_radians()));
+
+    let half_arc_anim = obanim::f32::smootheststep()
+        .stretched(arc_period / 2.0)
+        .map(|v| v * 160_f32.to_radians());
+    let arc_anim = half_arc_anim
+        .then(&half_arc_anim.reversed())
+        .repeated(arcs_per_swing);
+
+    swing_anim.zip_map(arc_anim, |swing_angle, arc_angle| {
+        let from_direction = Vec3::X.rotate_y(-arc_angle).rotate_x(swing_angle);
+        gfx::Sunlight { from_direction }
+    })
 }
 
 #[derive(Debug, Clone)]

@@ -125,7 +125,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     {
         let self_clone = self.clone();
         let other_clone = other.clone();
-        Anim::func(self_clone.length, move |t| {
+        Anim::func(self_clone.length.min(other_clone.length), move |t| {
             (self_clone.fn_handle.call(t), other_clone.fn_handle.call(t))
         })
     }
@@ -135,7 +135,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     {
         let self_clone = self.clone();
         let other_clone = other.clone();
-        Anim::func(self_clone.length, move |t| {
+        Anim::func(self_clone.length.min(other_clone.length), move |t| {
             (
                 t,
                 self_clone.fn_handle.call(t),
@@ -151,7 +151,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     {
         let self_clone = self.clone();
         let other_clone = other.clone();
-        Anim::func(self_clone.length, move |t| {
+        Anim::func(self_clone.length.min(other_clone.length), move |t| {
             f(self_clone.fn_handle.call(t), other_clone.fn_handle.call(t))
         })
     }
@@ -163,7 +163,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     {
         let self_clone = self.clone();
         let other_clone = other.clone();
-        Anim::func(self_clone.length, move |t| {
+        Anim::func(self_clone.length.min(other_clone.length), move |t| {
             f(
                 t,
                 self_clone.fn_handle.call(t),
@@ -234,14 +234,33 @@ impl<T: Copy + Sized + 'static> Anim<T> {
                 .call((t + shift_length) % self_clone.length)
         })
     }
+    pub fn repeated(&self, count: f32) -> Anim<T> {
+        let self_clone = self.clone();
+        Anim::func(self.length * count, move |t| {
+            self_clone.fn_handle.call(t % self_clone.length)
+        })
+    }
 }
 
 pub mod f32 {
+    use std::f32::consts::TAU;
+
     use super::Anim;
     pub fn parabola() -> Anim<f32> {
         Anim::func(1.0, |t| 4.0 * t * (1.0 - t))
     }
-    pub fn cubic_ease() -> Anim<f32> {
+    pub fn smoothstep() -> Anim<f32> {
         Anim::func(1.0, |t| t * t * (3.0 - 2.0 * t))
+    }
+    pub fn smootherstep() -> Anim<f32> {
+        Anim::func(1.0, |t| t * t * t * (6.0 * t * t - 15.0 * t + 10.0))
+    }
+    pub fn smootheststep() -> Anim<f32> {
+        Anim::func(1.0, |t| {
+            t * t * t * t * (-20.0 * t * t * t + 70.0 * t * t - 84.0 * t + 35.0)
+        })
+    }
+    pub fn usin() -> Anim<f32> {
+        Anim::func(1.0, |t| f32::sin(TAU * t))
     }
 }

@@ -440,7 +440,12 @@ impl State {
         self.device.end_copy_pass(copy_pass);
     }
 
-    pub fn render<'a>(&mut self, eyeball: &Eyeball, poses: impl IntoIterator<Item = &'a Pose>) {
+    pub fn render<'a>(
+        &mut self,
+        eyeball: &Eyeball,
+        poses: impl IntoIterator<Item = &'a Pose>,
+        sunlight: &Sunlight,
+    ) {
         let mut cbuf = self.device.acquire_command_buffer().unwrap();
 
         // upload pose data to storage buffer
@@ -494,7 +499,7 @@ impl State {
 
         // data preparation used in multiple passes
         let u_lamp = ULamp {
-            from_direction: vec4(-1.0, -2.0, 2.0, 0.0).normalize(),
+            from_direction: sunlight.from_direction.extend(0.0),
         };
 
         // render skybox to retina
@@ -881,4 +886,9 @@ impl Retina {
     fn viewport(&self) -> Viewport {
         Viewport::new(0.0, 0.0, self.width, self.height, 0.0, 1.0)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Sunlight {
+    pub from_direction: Vec3,
 }

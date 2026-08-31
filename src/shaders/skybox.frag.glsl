@@ -8,11 +8,19 @@ layout(std140, set = 3, binding = 0) uniform ULamp {
 layout(location = 0) in vec4 sWorldNormal;
 layout(location = 0) out vec4 fColor;
 
+const vec4 SKY_COLOR = vec4(0.0, 191.0, 255.0, 255.0) / 255.0;
+const vec4 AUREOLE_COLOR = vec4(1.0, 1.0, 1.0, 1.0);
+const float AUREOLE_ANGLE_WIDTH = radians(90.0);
+
 void main() {
-    float lampFrac = (1.0 + dot(normalize(sWorldNormal), uLamp.fromDirection)) / 2.0;
 
-    vec4 darkColor = vec4(1.0, 1.0, 1.0, 1.0);
-    vec4 lightColor = vec4(0.67, 0.85, 0.90, 1.0);
+    float skyAngleWithLamp = acos(dot(normalize(sWorldNormal), uLamp.fromDirection));
+    float lampAureoleIntensity;
+    if (skyAngleWithLamp >= AUREOLE_ANGLE_WIDTH) {
+        lampAureoleIntensity = 0.0;
+    } else {
+        lampAureoleIntensity = clamp(1.0 - skyAngleWithLamp / AUREOLE_ANGLE_WIDTH, 0.0, 1.0);
+    }
 
-    fColor = mix(darkColor, lightColor, lampFrac);
+    fColor = mix(SKY_COLOR, AUREOLE_COLOR, pow(lampAureoleIntensity, 2.0));
 }
