@@ -114,12 +114,12 @@ impl State {
 
             let compiler = shaderc::Compiler::new().unwrap();
 
-            let vertex_source = include_str!("shaders/vertex.glsl");
+            let vertex_source = include_str!("shaders/mesh.vert.glsl");
             let vertex_ir = compiler
                 .compile_into_spirv(
                     vertex_source,
                     ShaderKind::Vertex,
-                    "shaders/vertex.glsl",
+                    "shaders/mesh.vert.glsl",
                     "main",
                     None,
                 )
@@ -136,12 +136,12 @@ impl State {
                 .build()
                 .unwrap();
 
-            let fragment_source = include_str!("shaders/fragment.glsl");
+            let fragment_source = include_str!("shaders/mesh.frag.glsl");
             let fragment_ir = compiler
                 .compile_into_spirv(
                     fragment_source,
                     ShaderKind::Fragment,
-                    "shaders/fragment.glsl",
+                    "shaders/mesh.frag.glsl",
                     "main",
                     None,
                 )
