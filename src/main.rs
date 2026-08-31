@@ -4,17 +4,22 @@ mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{Quat, Vec2, Vec3, Vec3Swizzles};
-use sdl3::keyboard::Keycode;
+use glam::{Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles, vec3};
 
 fn main() {
     let sdl = sdl3::init().unwrap();
 
     // cube definition
     const CUBE_COUNT: usize = 3;
+    const CUBE_SIDE_LENGTH: f32 = 0.67;
     let floor_mesh = obmesh::floor();
     let floor_pose = gfx::Pose::default();
-    let cube_meshes: Vec<_> = (0..CUBE_COUNT).map(|_| obmesh::colorful_cube()).collect();
+    let cube_meshes: Vec<_> = (0..CUBE_COUNT)
+        .map(|_| {
+            let cube = obmesh::colorful_cube();
+            cube.map_positions(|v| v.with_xyz(v.xyz() * CUBE_SIDE_LENGTH))
+        })
+        .collect();
     let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
 
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
@@ -30,7 +35,7 @@ fn main() {
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
             let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
 
-            let ground_offset = Vec3::Z * 0.5;
+            let ground_offset = Vec3::Z * 0.5 * CUBE_SIDE_LENGTH;
             let somersault = somersault_anim(
                 distance * Vec3::X.rotate_z(angle) + ground_offset,
                 Vec3::ZERO + ground_offset,
@@ -54,12 +59,12 @@ fn main() {
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
 
-    // window stuff
+    // window and event stuff
     let mouse_subsystem = sdl.mouse();
     mouse_subsystem.set_relative_mouse_mode(gfx_state.window(), true);
 
     // player data
-    let mut player = Player::new();
+    let mut player = Player::new_at_spawn();
     fn updated_eyeball(player: &Player, gfx_state: &gfx::State) -> gfx::Eyeball {
         let aspect_ratio = {
             let (width, height) = gfx_state.get_retina_size();
@@ -82,7 +87,9 @@ fn main() {
     'main_loop: loop {
         let elapsed_time_secs = (Instant::now() - start_time).as_secs_f32();
 
+        // event handling
         for event in event_pump.poll_iter() {
+            use sdl3::keyboard::Keycode;
             match event {
                 sdl3::event::Event::Quit { .. }
                 | sdl3::event::Event::KeyDown {
@@ -99,6 +106,33 @@ fn main() {
                     player.nudge_look(xrel, yrel);
                 }
                 _ => {}
+            }
+        }
+
+        // raw input handling
+        {
+            use sdl3::keyboard::Scancode;
+
+            const DT: f32 = 1.0 / 60.0;
+
+            let keyboard_state = event_pump.keyboard_state();
+            if keyboard_state.is_scancode_pressed(Scancode::W) {
+                player.move_forward(DT)
+            }
+            if keyboard_state.is_scancode_pressed(Scancode::S) {
+                player.move_backward(DT);
+            }
+            if keyboard_state.is_scancode_pressed(Scancode::A) {
+                player.strafe_left(DT);
+            }
+            if keyboard_state.is_scancode_pressed(Scancode::D) {
+                player.strafe_right(DT);
+            }
+            if keyboard_state.is_scancode_pressed(Scancode::Space) {
+                player.fly_up(DT);
+            }
+            if keyboard_state.is_scancode_pressed(Scancode::LShift) {
+                player.fly_down(DT);
             }
         }
 
@@ -156,9 +190,9 @@ struct Player {
 impl Player {
     const EYE_HEIGHT: f32 = 1.7;
 
-    fn new() -> Self {
+    fn new_at_spawn() -> Self {
         Self {
-            position: Vec3::ZERO,
+            position: vec3(0.0, 0.0, 2.0),
             azimuth: 0.0,
             pitch: 0.0,
         }
@@ -166,7 +200,7 @@ impl Player {
     fn eyeball(&self, fov: f32, aspect_ratio: f32) -> gfx::Eyeball {
         gfx::Eyeball {
             position: self.position + Vec3::Z * Self::EYE_HEIGHT,
-            facing: Vec3::X.rotate_y(-self.pitch).rotate_z(self.azimuth),
+            facing: self.facing(),
             fov,
             aspect_ratio,
         }
@@ -179,6 +213,40 @@ impl Player {
 
         self.pitch -= (dy * SPEED_RAD_PER_PIXEL) % TAU;
         self.pitch = self.pitch.clamp(-TAU / 4.0 + EPSILON, TAU / 4.0 - EPSILON);
+    }
+
+    // unit vectors
+    fn facing(&self) -> Vec3 {
+        Vec3::X.rotate_y(-self.pitch).rotate_z(self.azimuth)
+    }
+    fn bearing(&self) -> Vec3 {
+        Vec3::X.rotate_z(self.azimuth)
+    }
+    fn bearing_left(&self) -> Vec3 {
+        Vec3::Y.rotate_z(self.azimuth)
+    }
+
+    // speeds in metres per second
+    const HORIZONTAL_SPEED: f32 = 3.0;
+    const VERTICAL_SPEEED: f32 = 3.0;
+
+    fn move_forward(&mut self, dt: f32) {
+        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing();
+    }
+    fn move_backward(&mut self, dt: f32) {
+        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing();
+    }
+    fn strafe_left(&mut self, dt: f32) {
+        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+    }
+    fn strafe_right(&mut self, dt: f32) {
+        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+    }
+    fn fly_up(&mut self, dt: f32) {
+        self.position += Self::VERTICAL_SPEEED * dt * Vec3::Z;
+    }
+    fn fly_down(&mut self, dt: f32) {
+        self.position -= Self::VERTICAL_SPEEED * dt * Vec3::Z;
     }
 }
 
