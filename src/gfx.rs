@@ -2,13 +2,13 @@ use glam::{vec3, vec4, Mat4, Quat, Vec3, Vec4};
 use sdl3::{
     self,
     gpu::{
-        Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription,
+        BlitInfo, Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription,
         ColorTargetInfo, CompareOp, CullMode, DepthStencilState, DepthStencilTargetInfo, Device,
-        FillMode, FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo, IndexElementSize,
-        LoadOp, PrimitiveType, RasterizerState, SampleCount, Shader, ShaderFormat, ShaderStage,
-        StoreOp, Texture, TextureCreateInfo, TextureFormat, TextureType, TextureUsage,
-        TransferBuffer, TransferBufferLocation, VertexAttribute, VertexBufferDescription,
-        VertexElementFormat, VertexInputRate, VertexInputState,
+        FillMode, Filter, FrontFace, GraphicsPipeline, GraphicsPipelineTargetInfo,
+        IndexElementSize, LoadOp, PrimitiveType, RasterizerState, SampleCount, Shader,
+        ShaderFormat, ShaderStage, StoreOp, Texture, TextureCreateInfo, TextureFormat, TextureType,
+        TextureUsage, TransferBuffer, TransferBufferLocation, VertexAttribute,
+        VertexBufferDescription, VertexElementFormat, VertexInputRate, VertexInputState, Viewport,
     },
     pixels::Color,
     video::Window,
@@ -16,10 +16,14 @@ use sdl3::{
 };
 use std::ffi::CStr;
 
+const MAX_SCREEN_WIDTH: u32 = 1920;
+const MAX_SCREEN_HEIGHT: u32 = 1080;
+
 pub struct State {
     window: Window,
     device: Device,
     pipeline: GraphicsPipeline,
+    off_screen_surface: Texture<'static>,
     mesh_vbuf: Buffer,
     mesh_ibuf: Buffer,
     dbuf: Texture<'static>,
@@ -40,10 +44,24 @@ impl State {
 
         let mut device = sdl3::gpu::Device::new(ShaderFormat::SPIRV, true).unwrap();
         device = device.with_window(&window).unwrap();
+        let swapchain_texture_format = device.get_swapchain_texture_format(&window);
 
-        let pipeline = Self::new_render_pipeline(&device, &window);
+        let pipeline = Self::new_render_pipeline(&device, swapchain_texture_format);
 
         // resource creation
+        let off_screen_surface = device
+            .create_texture(
+                TextureCreateInfo::new()
+                    .with_type(TextureType::_2D)
+                    .with_format(swapchain_texture_format)
+                    .with_usage(TextureUsage::COLOR_TARGET | TextureUsage::SAMPLER)
+                    .with_width(MAX_SCREEN_WIDTH)
+                    .with_height(MAX_SCREEN_HEIGHT)
+                    .with_layer_count_or_depth(1)
+                    .with_num_levels(1)
+                    .with_sample_count(SampleCount::NoMultiSampling),
+            )
+            .unwrap();
         let mesh_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
@@ -62,8 +80,8 @@ impl State {
                     .with_type(TextureType::_2D)
                     .with_format(TextureFormat::D16Unorm)
                     .with_usage(TextureUsage::DEPTH_STENCIL_TARGET)
-                    .with_width(1920)
-                    .with_height(1080)
+                    .with_width(MAX_SCREEN_WIDTH)
+                    .with_height(MAX_SCREEN_HEIGHT)
                     .with_layer_count_or_depth(1)
                     .with_num_levels(1)
                     .with_sample_count(SampleCount::NoMultiSampling),
@@ -90,6 +108,7 @@ impl State {
             window,
             device,
             pipeline,
+            off_screen_surface,
             mesh_vbuf,
             mesh_ibuf,
             dbuf,
@@ -105,7 +124,7 @@ impl State {
         (uwidth as f32, uheight as f32)
     }
 
-    fn new_render_pipeline(device: &Device, window: &Window) -> GraphicsPipeline {
+    fn new_render_pipeline(device: &Device, texture_format: TextureFormat) -> GraphicsPipeline {
         // load and compile shaders
         let vertex_shader: Shader;
         let fragment_shader: Shader;
@@ -157,8 +176,6 @@ impl State {
                 .build()
                 .unwrap();
         }
-
-        let texture_format = device.get_swapchain_texture_format(window);
 
         device
             .create_graphics_pipeline()
@@ -265,19 +282,6 @@ impl State {
     pub fn render<'a>(&mut self, camera: &Camera, poses: impl IntoIterator<Item = &'a Pose>) {
         let mut cbuf = self.device.acquire_command_buffer().unwrap();
 
-        let color_target_info = {
-            // need to grab screen texture and convert it to a color target _first_,
-            // because .wait_and_acquire_swapchain_texture() takes cbuf as &mut (for
-            // seemingly no reason nor safety improvement)
-            let screen_texture = cbuf
-                .wait_and_acquire_swapchain_texture(&self.window)
-                .unwrap();
-            ColorTargetInfo::default()
-                .with_texture(&screen_texture)
-                .with_load_op(LoadOp::CLEAR)
-                .with_clear_color(Color::RGB(127, 127, 127))
-        };
-
         // upload pose data to storage buffer
         {
             let pose_transforms = {
@@ -306,13 +310,33 @@ impl State {
             self.device.end_copy_pass(pose_upload_pass);
         }
 
-        // render pass
+        // prepare swapchain info; unfortunately, .wait_and_acquire_swapchain_texture()
+        // takes &'a mut CommandBuffer, so we have to prepare anything that uses it ahead
+        // of time so that the texture handle Texture<'a> can be dropped.
+        let mut blit: BlitInfo;
+        let swapchain_width: f32;
+        let swapchain_height: f32;
+        {
+            let swapchain_texture = cbuf
+                .wait_and_acquire_swapchain_texture(&self.window)
+                .unwrap();
+            (swapchain_width, swapchain_height) = (
+                swapchain_texture.width() as f32,
+                swapchain_texture.height() as f32,
+            );
+            blit = BlitInfo::default().with_destination_texture(&swapchain_texture);
+        }
+
+        // render to off-screen surface
         {
             let render_pass = self
                 .device
                 .begin_render_pass(
                     &cbuf,
-                    &[color_target_info],
+                    &[ColorTargetInfo::default()
+                        .with_texture(&self.off_screen_surface)
+                        .with_clear_color(Color::RGB(127, 127, 127))
+                        .with_load_op(LoadOp::CLEAR)],
                     Some(
                         &DepthStencilTargetInfo::new()
                             .with_texture(&mut self.dbuf)
@@ -326,6 +350,11 @@ impl State {
                 )
                 .unwrap();
             {
+                self.device.set_viewport(
+                    &render_pass,
+                    Viewport::new(0.0, 0.0, swapchain_width, swapchain_height, 0.0, 1.0),
+                );
+
                 render_pass.bind_graphics_pipeline(&self.pipeline);
                 render_pass
                     .bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.mesh_vbuf)]);
@@ -355,6 +384,21 @@ impl State {
                 }
             }
             self.device.end_render_pass(render_pass);
+        }
+
+        // blit off-screen surface to screen
+        {
+            blit = blit
+                .with_source_texture(&self.off_screen_surface)
+                .with_source_region(0, 0, 0, swapchain_width as u32, swapchain_height as u32)
+                .with_source_mip(0)
+                .with_destination_region(0, 0, 0, swapchain_width as u32, swapchain_height as u32)
+                .with_destination_mip(0)
+                .with_load_op(LoadOp::CLEAR)
+                .with_clear_color(Color::RGB(0, 0, 0))
+                .with_filter(Filter::Nearest)
+                .with_cycle(false);
+            cbuf.blit_texture(blit);
         }
 
         cbuf.submit().unwrap();
