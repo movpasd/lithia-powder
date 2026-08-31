@@ -35,42 +35,68 @@ impl<D> Mesh<D> {
             v.normal = m * v.normal
         });
     }
+    pub fn map_data<D2, F>(&self, mut f: F) -> Mesh<D2>
+    where
+        F: FnMut(&D) -> D2,
+    {
+        Mesh {
+            vertexes: self
+                .vertexes
+                .iter()
+                .map(|v| Vertex {
+                    position: v.position,
+                    normal: v.normal,
+                    data: f(&v.data),
+                })
+                .collect(),
+            indexes: self.indexes.clone(),
+        }
+    }
+}
+
+/// a unit square centred on the origin facing up (+Z)
+pub fn unit_square() -> Mesh<()> {
+    let vertex_positions = [
+        [-0.5, -0.5, 0.0, 1.0],
+        [0.5, -0.5, 0.0, 1.0],
+        [-0.5, 0.5, 0.0, 1.0],
+        [0.5, 0.5, 0.0, 1.0],
+    ];
+    let vertex_normals = [
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ];
+    let vertexes: Vec<Vertex<_>> = itertools::izip!(vertex_positions, vertex_normals)
+        .map(|(pos_arr, norm_arr)| Vertex {
+            position: Vec4::from_array(pos_arr),
+            normal: Vec4::from_array(norm_arr),
+            data: (),
+        })
+        .collect();
+
+    let indexes = vec![0, 1, 3, 3, 2, 0];
+
+    Mesh { vertexes, indexes }
 }
 
 pub fn colorful_cube() -> Mesh<Vec4> {
     use std::f32::consts::{FRAC_PI_2, PI};
 
+    let vertex_colors = [
+        [0.0, 1.0, 1.0, 1.0],
+        [0.75, 0.25, 1.0, 1.0],
+        [1.0, 0.5, 0.5, 1.0],
+        [0.75, 1.0, 0.25, 1.0],
+    ];
+
     let mut plus_z_face = {
-        let vertex_positions = [
-            [-0.5, -0.5, 0.0, 1.0],
-            [0.5, -0.5, 0.0, 1.0],
-            [-0.5, 0.5, 0.0, 1.0],
-            [0.5, 0.5, 0.0, 1.0],
-        ];
-        let vertex_colors = [
-            [0.0, 1.0, 1.0, 1.0],
-            [0.75, 0.25, 1.0, 1.0],
-            [1.0, 0.5, 0.5, 1.0],
-            [0.75, 1.0, 0.25, 1.0],
-        ];
-        let vertex_normals = [
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-        ];
-        let vertexes: Vec<Vertex<_>> =
-            itertools::izip!(vertex_positions, vertex_colors, vertex_normals)
-                .map(|(pos_arr, col_arr, norm_arr)| Vertex {
-                    position: Vec4::from_array(pos_arr),
-                    normal: Vec4::from_array(norm_arr),
-                    data: Vec4::from_array(col_arr),
-                })
-                .collect();
-
-        let indexes = vec![0, 1, 3, 3, 2, 0];
-
-        Mesh { vertexes, indexes }
+        let mut i = 0;
+        unit_square().map_data(|_| {
+            i += 1;
+            Vec4::from_array(vertex_colors[i - 1])
+        })
     };
     plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
 
@@ -94,3 +120,5 @@ pub fn colorful_cube() -> Mesh<Vec4> {
 
     cube
 }
+
+// pub fn floor() -> Mesh<Vec4> {}
