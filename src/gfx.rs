@@ -137,6 +137,9 @@ impl State {
     pub fn get_retina_size(&self) -> (f32, f32) {
         (self.retina.width, self.retina.height)
     }
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
 
     fn new_render_pipeline(device: &Device, texture_format: TextureFormat) -> GraphicsPipeline {
         // load and compile shaders

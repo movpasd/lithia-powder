@@ -4,7 +4,7 @@ mod obmesh;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles};
+use glam::{Quat, Vec2, Vec3, Vec3Swizzles};
 use sdl3::keyboard::Keycode;
 
 fn main() {
@@ -54,6 +54,10 @@ fn main() {
         gfx_state.get_gpu_model_name().to_str().unwrap()
     );
 
+    // window stuff
+    let mouse_subsystem = sdl.mouse();
+    mouse_subsystem.set_relative_mouse_mode(gfx_state.window(), true);
+
     // player data
     let mut player = Player::new();
     fn updated_eyeball(player: &Player, gfx_state: &gfx::State) -> gfx::Eyeball {
@@ -63,7 +67,7 @@ fn main() {
         };
         player.eyeball(70_f32.to_radians(), aspect_ratio)
     }
-    let mut eyeball: gfx::Eyeball = updated_eyeball(&player, &gfx_state);
+    let mut eyeball: gfx::Eyeball;
 
     // mesh data upload
     {
@@ -91,18 +95,15 @@ fn main() {
                 } => {
                     break 'main_loop;
                 }
-                sdl3::event::Event::Window {
-                    timestamp: _,
-                    window_id: _,
-                    win_event: sdl3::event::WindowEvent::Resized(_, _),
-                } => {
-                    eyeball = updated_eyeball(&player, &gfx_state);
+                sdl3::event::Event::MouseMotion { xrel, yrel, .. } => {
+                    player.nudge_look(xrel, yrel);
                 }
                 _ => {}
             }
         }
 
         // logic
+        eyeball = updated_eyeball(&player, &gfx_state);
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
@@ -149,7 +150,8 @@ fn somersault_anim(
 #[derive(Debug, Clone)]
 struct Player {
     position: Vec3,
-    facing: Vec3,
+    azimuth: f32,
+    pitch: f32,
 }
 impl Player {
     const EYE_HEIGHT: f32 = 1.7;
@@ -157,16 +159,26 @@ impl Player {
     fn new() -> Self {
         Self {
             position: Vec3::ZERO,
-            facing: Vec3::X,
+            azimuth: 0.0,
+            pitch: 0.0,
         }
     }
     fn eyeball(&self, fov: f32, aspect_ratio: f32) -> gfx::Eyeball {
         gfx::Eyeball {
-            position: self.position + Self::EYE_HEIGHT,
-            facing: self.facing,
+            position: self.position + Vec3::Z * Self::EYE_HEIGHT,
+            facing: Vec3::X.rotate_y(-self.pitch).rotate_z(self.azimuth),
             fov,
             aspect_ratio,
         }
+    }
+    fn nudge_look(&mut self, dx: f32, dy: f32) {
+        const SPEED_RAD_PER_PIXEL: f32 = 0.2_f32.to_radians();
+        const EPSILON: f32 = 1e-5;
+
+        self.azimuth -= dx * SPEED_RAD_PER_PIXEL;
+
+        self.pitch -= (dy * SPEED_RAD_PER_PIXEL) % TAU;
+        self.pitch = self.pitch.clamp(-TAU / 4.0 + EPSILON, TAU / 4.0 - EPSILON);
     }
 }
 
