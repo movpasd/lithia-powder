@@ -151,7 +151,7 @@ fn camera_orbit_anim(aspect_ratio: f32) -> obanim::Anim<gfx::Camera> {
     const ORBIT_PERIOD: f32 = 40.0;
     const ORBIT_BIRDSEYE_DISTANCE: f32 = 7.0;
     const ORBIT_HEIGHT: f32 = 4.0;
-    const ORBIT_PHASE_INIT: f32 = 0.0;
+    const ORBIT_PHASE_INIT: f32 = -15_f32.to_radians();
     const CAMERA_LOOK_AT: Vec3 = vec3(0.0, 0.0, 0.5);
 
     obanim::Anim::func(ORBIT_PERIOD, move |t| {

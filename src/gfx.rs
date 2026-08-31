@@ -338,7 +338,7 @@ impl State {
 
                 let u_camera = UCamera::from_camera(camera);
                 let u_lamp = ULamp {
-                    from_direction: vec4(-1.0, -2.0, 3.0, 0.0).normalize(),
+                    from_direction: vec4(-1.0, -2.0, 2.0, 0.0).normalize(),
                 };
                 cbuf.push_vertex_uniform_data(0, &u_camera);
                 cbuf.push_vertex_uniform_data(1, &u_lamp);
