@@ -22,8 +22,8 @@ const float AMBIENT_ILLUMINATION = 0.33;
 const float FULL_ILLUMINATION_THRESHOLD = 0.85;
 const float FULLY_LIT_MULTIPLIER = 1.0;
 
-const float GLARE_ANGLE = radians(15.0);
-const float GLARE_MULTIPLIER = 0.4;
+const float HIGHLIGHT_ANGLE_WIDTH = radians(15.0);
+const float HIGHLIGHT_MULTIPLIER = 0.4;
 
 void main() {
     float finalIllumination = clamp(sLampIllumination / FULL_ILLUMINATION_THRESHOLD, AMBIENT_ILLUMINATION, 1.0);
@@ -33,9 +33,9 @@ void main() {
         2.0 * dot(uLamp.fromDirection, sWorldNormal) * sWorldNormal
         - uLamp.fromDirection;
     vec4 fragToCameraDir = normalize(uCamera.worldPosition - sWorldPosition);
-    float angleFromReflection = acos(dot(lampReflectionDir, fragToCameraDir));
-    float glare = max(0.0, 1.0 - angleFromReflection / GLARE_ANGLE);
-    glare = pow(glare, 3.0);
+    float angleFromSpecularHighlight = acos(dot(lampReflectionDir, fragToCameraDir));
+    float highlightIntensity = max(0.0, 1.0 - angleFromSpecularHighlight / HIGHLIGHT_ANGLE_WIDTH);
+    highlightIntensity = pow(highlightIntensity, 3.0);
 
-    fColor = sColor * lightingMultiplier + GLARE_MULTIPLIER * glare;
+    fColor = sColor * lightingMultiplier + HIGHLIGHT_MULTIPLIER * highlightIntensity;
 }
