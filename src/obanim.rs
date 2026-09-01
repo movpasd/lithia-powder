@@ -1,9 +1,12 @@
 #![allow(unused)]
 
 use std::{
+    f32::consts::TAU,
     ops::{Add, Mul},
     sync::Arc,
 };
+
+use glam::{vec2, Vec2};
 
 /// represents a virtual function on the interval [0, length]
 #[derive(Debug, Clone)]
@@ -242,25 +245,28 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     }
 }
 
-pub mod f32 {
-    use std::f32::consts::TAU;
+impl Anim<Vec2> {
+    pub fn circle() -> Self {
+        Anim::func(1.0, |t| vec2(f32::cos(TAU * t), f32::sin(TAU * t)))
+    }
+}
 
-    use super::Anim;
-    pub fn parabola() -> Anim<f32> {
+impl Anim<f32> {
+    pub fn parabola() -> Self {
         Anim::func(1.0, |t| 4.0 * t * (1.0 - t))
     }
-    pub fn smoothstep() -> Anim<f32> {
+    pub fn smoothstep() -> Self {
         Anim::func(1.0, |t| t * t * (3.0 - 2.0 * t))
     }
-    pub fn smootherstep() -> Anim<f32> {
+    pub fn smootherstep() -> Self {
         Anim::func(1.0, |t| t * t * t * (6.0 * t * t - 15.0 * t + 10.0))
     }
-    pub fn smootheststep() -> Anim<f32> {
+    pub fn smootheststep() -> Self {
         Anim::func(1.0, |t| {
             t * t * t * t * (-20.0 * t * t * t + 70.0 * t * t - 84.0 * t + 35.0)
         })
     }
-    pub fn usin() -> Anim<f32> {
+    pub fn usin() -> Self {
         Anim::func(1.0, |t| f32::sin(TAU * t))
     }
 }

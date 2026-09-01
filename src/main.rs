@@ -6,6 +6,8 @@ use std::{f32::consts::TAU, time::Instant};
 
 use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
 
+use obanim::Anim;
+
 fn main() {
     let sdl = sdl3::init().unwrap();
 
@@ -74,7 +76,8 @@ fn main() {
     }
     let mut eyeball: gfx::Eyeball;
 
-    let sunlight_anim = sunlight_anim();
+    const SUNLIGHT_PERIOD: f32 = 120.0;
+    let sunlight_anim = sunlight_anim(SUNLIGHT_PERIOD);
     let mut sunlight: gfx::Sunlight;
 
     // mesh data upload
@@ -141,7 +144,7 @@ fn main() {
 
         // logic
         eyeball = updated_eyeball(&player, &gfx_state);
-        sunlight = sunlight_anim.sample(elapsed_time_secs);
+        sunlight = sunlight_anim.sample_looped(elapsed_time_secs);
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
@@ -164,8 +167,8 @@ fn somersault_anim(
     length_secs: f32,
     flip_count: f32,
     twist_count: f32,
-) -> obanim::Anim<gfx::Pose> {
-    obanim::f32::parabola()
+) -> Anim<gfx::Pose> {
+    Anim::<f32>::parabola()
         .map_indexed(move |t, s| {
             // the "baseline" is the straight line between start_position to end_position
             let baseline = start_position + (end_position - start_position) * t;
@@ -185,26 +188,13 @@ fn somersault_anim(
         .stretched(length_secs)
 }
 
-fn sunlight_anim() -> obanim::Anim<gfx::Sunlight> {
-    let swing_period = 120.0;
-    let arcs_per_swing = 10.0;
-    let arc_period = swing_period / arcs_per_swing;
-
-    let swing_anim = obanim::f32::usin()
-        .stretched(swing_period)
-        .map(|v| v * (80_f32.to_radians()));
-
-    let half_arc_anim = obanim::f32::smootheststep()
-        .stretched(arc_period / 2.0)
-        .map(|v| v * 160_f32.to_radians());
-    let arc_anim = half_arc_anim
-        .then(&half_arc_anim.reversed())
-        .repeated(arcs_per_swing);
-
-    swing_anim.zip_map(arc_anim, |swing_angle, arc_angle| {
-        let from_direction = Vec3::X.rotate_y(-arc_angle).rotate_x(swing_angle);
-        gfx::Sunlight { from_direction }
-    })
+fn sunlight_anim(period: f32) -> Anim<gfx::Sunlight> {
+    Anim::<Vec2>::circle()
+        .map(move |xy| {
+            let from_direction = xy.extend(0.0).rotate_towards(Vec3::Z, 30_f32.to_radians());
+            gfx::Sunlight { from_direction }
+        })
+        .stretched(period)
 }
 
 #[derive(Debug, Clone)]
