@@ -1,10 +1,13 @@
 mod gfx;
-mod obanim;
-mod obmesh;
+mod anim;
+mod mesh;
+mod voxel;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles, vec3};
+use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
+
+use anim::Anim;
 
 fn main() {
     let sdl = sdl3::init().unwrap();
@@ -12,11 +15,11 @@ fn main() {
     // cube definition
     const CUBE_COUNT: usize = 3;
     const CUBE_SIDE_LENGTH: f32 = 0.67;
-    let floor_mesh = obmesh::floor();
+    let floor_mesh = mesh::floor();
     let floor_pose = gfx::Pose::default();
     let cube_meshes: Vec<_> = (0..CUBE_COUNT)
         .map(|_| {
-            let cube = obmesh::colorful_cube();
+            let cube = mesh::colorful_cube();
             cube.map_positions(|v| v.with_xyz(v.xyz() * CUBE_SIDE_LENGTH))
         })
         .collect();
@@ -63,7 +66,7 @@ fn main() {
     let mouse_subsystem = sdl.mouse();
     mouse_subsystem.set_relative_mouse_mode(gfx_state.window(), true);
 
-    // player data
+    // game data
     let mut player = Player::new_at_spawn();
     fn updated_eyeball(player: &Player, gfx_state: &gfx::State) -> gfx::Eyeball {
         let aspect_ratio = {
@@ -73,6 +76,10 @@ fn main() {
         player.eyeball(70_f32.to_radians(), aspect_ratio)
     }
     let mut eyeball: gfx::Eyeball;
+
+    const SUNLIGHT_PERIOD: f32 = 120.0;
+    let sunlight_anim = sunlight_anim(SUNLIGHT_PERIOD);
+    let mut sunlight: gfx::Sunlight;
 
     // mesh data upload
     {
@@ -138,6 +145,7 @@ fn main() {
 
         // logic
         eyeball = updated_eyeball(&player, &gfx_state);
+        sunlight = sunlight_anim.sample_looped(elapsed_time_secs);
         for (pose, anim) in cube_poses.iter_mut().zip(&cube_anims) {
             *pose = anim.sample_looped(elapsed_time_secs);
         }
@@ -146,7 +154,7 @@ fn main() {
         {
             let floor_pose_container = [floor_pose];
             let poses = floor_pose_container.iter().chain(&cube_poses);
-            gfx_state.render(&eyeball, poses);
+            gfx_state.render(&eyeball, poses, &sunlight);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));
@@ -160,8 +168,8 @@ fn somersault_anim(
     length_secs: f32,
     flip_count: f32,
     twist_count: f32,
-) -> obanim::Anim<gfx::Pose> {
-    obanim::f32::parabola()
+) -> Anim<gfx::Pose> {
+    Anim::<f32>::parabola()
         .map_indexed(move |t, s| {
             // the "baseline" is the straight line between start_position to end_position
             let baseline = start_position + (end_position - start_position) * t;
@@ -179,6 +187,15 @@ fn somersault_anim(
             gfx::Pose { position, rotation }
         })
         .stretched(length_secs)
+}
+
+fn sunlight_anim(period: f32) -> Anim<gfx::Sunlight> {
+    Anim::<Vec2>::circle()
+        .map(move |xy| {
+            let from_direction = xy.extend(0.0).rotate_towards(Vec3::Z, 30_f32.to_radians());
+            gfx::Sunlight { from_direction }
+        })
+        .stretched(period)
 }
 
 #[derive(Debug, Clone)]
@@ -247,57 +264,5 @@ impl Player {
     }
     fn fly_down(&mut self, dt: f32) {
         self.position -= Self::VERTICAL_SPEEED * dt * Vec3::Z;
-    }
-}
-
-#[allow(dead_code)]
-mod dbgutil {
-    use sdl3::sys::gpu::{
-        SDL_DownloadFromGPUTexture, SDL_GPUTextureRegion, SDL_GPUTextureTransferInfo,
-    };
-
-    pub fn download_texture_content<T: std::fmt::Debug + std::marker::Copy>(
-        device: &sdl3::gpu::Device,
-        texture: &sdl3::gpu::Texture,
-    ) -> Vec<T> {
-        let download_buffer = device
-            .create_transfer_buffer()
-            .with_size(1_024 * 1_024)
-            .build()
-            .unwrap();
-        let vertex_data_download = device.acquire_command_buffer().unwrap();
-        {
-            let copy_pass = device.begin_copy_pass(&vertex_data_download).unwrap();
-            unsafe {
-                SDL_DownloadFromGPUTexture(
-                    copy_pass.raw(),
-                    &SDL_GPUTextureRegion {
-                        texture: texture.raw(),
-                        mip_level: 0,
-                        layer: 0,
-                        x: 0,
-                        y: 0,
-                        z: 0,
-                        w: 0,
-                        h: 0,
-                        d: 0,
-                    },
-                    &SDL_GPUTextureTransferInfo {
-                        transfer_buffer: download_buffer.raw(),
-                        offset: 0,
-                        pixels_per_row: 0,
-                        rows_per_layer: 0,
-                    },
-                );
-            }
-            device.end_copy_pass(copy_pass);
-        }
-        let vertex_data_download_fence = vertex_data_download
-            .submit_and_acquire_fence(device)
-            .unwrap();
-        while !vertex_data_download_fence.query(device) {}
-
-        let content = download_buffer.map::<T>(device, false).mem().to_owned();
-        content
     }
 }
