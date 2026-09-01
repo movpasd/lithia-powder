@@ -13,7 +13,7 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // cube definition
-    const CUBE_COUNT: usize = 3;
+    const CUBE_COUNT: usize = 7;
     const CUBE_SIDE_LENGTH: f32 = 0.67;
     let floor_mesh = mesh::floor();
     let floor_pose = gfx::Pose::default();
@@ -28,7 +28,7 @@ fn main() {
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
         .map(|i| {
             let length_secs = 1.5;
-            let wait_secs = 0.2;
+            let wait_secs = 0.0;
             let total_secs = 2.0 * (length_secs + wait_secs);
             let distance = 4.0;
             let height = 3.0;
@@ -36,7 +36,7 @@ fn main() {
             let twist_count = 0.5;
 
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
-            let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
+            let shift = (3 * i) as f32 * total_secs / (CUBE_COUNT as f32);
 
             let ground_offset = Vec3::Z * 0.5 * CUBE_SIDE_LENGTH;
             let somersault = somersault_anim(
@@ -57,7 +57,9 @@ fn main() {
 
     // chunk definition
     let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
-        if z <= x && z <= y && z < 32 - x && z < 32 - y {
+        // let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
+        let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
+        if include_cell {
             world::Block::Sand
         } else {
             world::Block::Air
