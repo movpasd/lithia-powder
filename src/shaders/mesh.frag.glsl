@@ -18,7 +18,7 @@ layout(location = 3) in vec4 sWorldNormal;
 layout(location = 0) out vec4 fColor;
 
 
-const float AMBIENT_ILLUMINATION = 0.33;
+const float AMBIENT_ILLUMINATION = 0.5;
 const float FULL_ILLUMINATION_THRESHOLD = 0.85;
 const float FULLY_LIT_MULTIPLIER = 1.0;
 
@@ -27,7 +27,7 @@ const float HIGHLIGHT_MULTIPLIER = 0.4;
 
 void main() {
     float finalIllumination = clamp(sLampIllumination / FULL_ILLUMINATION_THRESHOLD, AMBIENT_ILLUMINATION, 1.0);
-    float lightingMultiplier = FULLY_LIT_MULTIPLIER * pow(finalIllumination, 0.85);
+    float lightingMultiplier = FULLY_LIT_MULTIPLIER * pow(finalIllumination, 0.67);
 
     vec4 lampReflectionDir =
         2.0 * dot(uLamp.fromDirection, sWorldNormal) * sWorldNormal
