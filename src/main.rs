@@ -159,6 +159,7 @@ fn main() {
             if keyboard_state.is_scancode_pressed(Scancode::LShift) {
                 player.fly_down(DT);
             }
+            player.dash = keyboard_state.is_scancode_pressed(Scancode::LCtrl)
         }
 
         // logic
@@ -225,6 +226,7 @@ struct Player {
     position: Vec3,
     azimuth: f32,
     pitch: f32,
+    dash: bool,
 }
 impl Player {
     const EYE_HEIGHT: f32 = 1.7;
@@ -234,6 +236,7 @@ impl Player {
             position: vec3(0.0, 0.0, 2.0),
             azimuth: 0.0,
             pitch: 0.0,
+            dash: false,
         }
     }
     fn eyeball(&self, fov: f32, aspect_ratio: f32) -> gfx::Eyeball {
@@ -266,25 +269,32 @@ impl Player {
     }
 
     // speeds in metres per second
-    const HORIZONTAL_SPEED: f32 = 3.0;
-    const VERTICAL_SPEEED: f32 = 3.0;
+    const SPEED: f32 = 3.0;
+    const DASH_MULTIPLIER: f32 = 3.0;
 
+    fn speed(&self) -> f32 {
+        if self.dash {
+            Self::DASH_MULTIPLIER * Self::SPEED
+        } else {
+            Self::SPEED
+        }
+    }
     fn move_forward(&mut self, dt: f32) {
-        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing();
+        self.position += self.speed() * dt * self.bearing();
     }
     fn move_backward(&mut self, dt: f32) {
-        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing();
+        self.position -= self.speed() * dt * self.bearing();
     }
     fn strafe_left(&mut self, dt: f32) {
-        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+        self.position += self.speed() * dt * self.bearing_left();
     }
     fn strafe_right(&mut self, dt: f32) {
-        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+        self.position -= self.speed() * dt * self.bearing_left();
     }
     fn fly_up(&mut self, dt: f32) {
-        self.position += Self::VERTICAL_SPEEED * dt * Vec3::Z;
+        self.position += self.speed() * dt * Vec3::Z;
     }
     fn fly_down(&mut self, dt: f32) {
-        self.position -= Self::VERTICAL_SPEEED * dt * Vec3::Z;
+        self.position -= self.speed() * dt * Vec3::Z;
     }
 }
