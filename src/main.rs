@@ -1,12 +1,13 @@
 mod gfx;
-mod obanim;
-mod obmesh;
+mod anim;
+mod mesh;
+mod voxel;
 
 use std::{f32::consts::TAU, time::Instant};
 
 use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
 
-use obanim::Anim;
+use anim::Anim;
 
 fn main() {
     let sdl = sdl3::init().unwrap();
@@ -14,11 +15,11 @@ fn main() {
     // cube definition
     const CUBE_COUNT: usize = 3;
     const CUBE_SIDE_LENGTH: f32 = 0.67;
-    let floor_mesh = obmesh::floor();
+    let floor_mesh = mesh::floor();
     let floor_pose = gfx::Pose::default();
     let cube_meshes: Vec<_> = (0..CUBE_COUNT)
         .map(|_| {
-            let cube = obmesh::colorful_cube();
+            let cube = mesh::colorful_cube();
             cube.map_positions(|v| v.with_xyz(v.xyz() * CUBE_SIDE_LENGTH))
         })
         .collect();

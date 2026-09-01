@@ -350,7 +350,7 @@ impl State {
     /// starts a copy pass
     pub fn update_meshes<'a>(
         &mut self,
-        meshes: impl IntoIterator<Item = &'a super::obmesh::Mesh<Vec4>>,
+        meshes: impl IntoIterator<Item = &'a super::mesh::Mesh<Vec4>>,
     ) {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
@@ -694,7 +694,7 @@ impl GpuMeshVertex {
         ]
     }
 
-    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::obmesh::Vertex<Vec4>) -> Self {
+    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::mesh::Vertex<Vec4>) -> Self {
         Self {
             model_position: mesh_vertex.position,
             color: mesh_vertex.data,
