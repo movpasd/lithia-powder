@@ -698,9 +698,9 @@ impl GpuMeshVertex {
 
     fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::mesh::Vertex<Vec4>) -> Self {
         Self {
-            model_position: mesh_vertex.position,
+            model_position: mesh_vertex.position.extend(1.0),
             color: mesh_vertex.data,
-            model_normal: mesh_vertex.normal,
+            model_normal: mesh_vertex.normal.extend(0.0),
             mesh_id,
             _pad: [0; _],
         }

@@ -90,7 +90,7 @@ impl Chunk {
 mod chunk_mesh_building {
     use std::iter::zip;
 
-    use glam::{IVec3, Mat4, Vec3, Vec4, ivec3, vec3};
+    use glam::{Affine3, IVec3, Vec3, Vec4, ivec3, vec3};
 
     use super::Chunk;
     use crate::mesh::{self, Mesh};
@@ -135,12 +135,12 @@ mod chunk_mesh_building {
                 }
 
                 let mut face = mesh::unit_square().map_data(|_| block.color());
-                face.transform(
-                    Mat4::from_axis_angle(rot_axis, rot_angle)
-                        * Mat4::from_translation(vec3(-0.5, -0.5, 0.5)),
+                face.transform_affine(
+                    Affine3::from_axis_angle(rot_axis, rot_angle)
+                        * Affine3::from_translation(vec3(-0.5, -0.5, 0.5)),
                 );
-                face.transform(Mat4::from_translation(cell_loc.as_vec3() + 0.5));
-                face.transform(Mat4::from_scale(Vec3::ONE * Chunk::BLOCK_SIZE));
+                face.transform_affine(Affine3::from_translation(cell_loc.as_vec3() + 0.5));
+                face.transform_scale(Chunk::BLOCK_SIZE);
                 mesh.append(&mut face);
             }
         }

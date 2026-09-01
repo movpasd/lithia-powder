@@ -1,10 +1,10 @@
-use glam::{vec3, vec4, Mat4, Vec4};
+use glam::{Affine3, Vec3, Vec4, vec3, vec4};
 
 /// (make sure your positions have w=1.0 and normals have w=0.0)
 #[derive(Debug, Clone)]
 pub struct Vertex<D> {
-    pub position: Vec4,
-    pub normal: Vec4,
+    pub position: Vec3,
+    pub normal: Vec3,
     pub data: D,
 }
 
@@ -29,10 +29,15 @@ impl<D> Mesh<D> {
         self.vertexes.append(&mut other.vertexes);
         self.indexes.append(&mut other.indexes);
     }
-    pub fn transform(&mut self, m: Mat4) {
+    pub fn transform_affine(&mut self, a: Affine3) {
         self.vertexes.iter_mut().for_each(|v| {
-            v.position = m * v.position;
-            v.normal = m * v.normal
+            v.position = a.transform_point3(v.position);
+            v.normal = a.transform_vector3(v.normal);
+        });
+    }
+    pub fn transform_scale(&mut self, s: f32) {
+        self.vertexes.iter_mut().for_each(|v| {
+            v.position *= s;
         });
     }
     pub fn map_data<D2, F>(self, mut f: F) -> Mesh<D2>
@@ -54,7 +59,7 @@ impl<D> Mesh<D> {
     }
     pub fn map_positions<F>(self, mut f: F) -> Mesh<D>
     where
-        F: FnMut(Vec4) -> Vec4,
+        F: FnMut(Vec3) -> Vec3,
     {
         Mesh {
             vertexes: self
@@ -74,21 +79,21 @@ impl<D> Mesh<D> {
 /// a unit square centred occupying x=0..1, y=0..1, z=0, facing up (+z)
 pub fn unit_square() -> Mesh<()> {
     let vertex_positions = [
-        [0.0, 0.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0, 1.0],
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0, 1.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
     ];
     let vertex_normals = [
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0],
     ];
     let vertexes: Vec<Vertex<_>> = itertools::izip!(vertex_positions, vertex_normals)
         .map(|(pos_arr, norm_arr)| Vertex {
-            position: Vec4::from_array(pos_arr),
-            normal: Vec4::from_array(norm_arr),
+            position: Vec3::from_array(pos_arr),
+            normal: Vec3::from_array(norm_arr),
             data: (),
         })
         .collect();
@@ -116,24 +121,24 @@ pub fn colorful_cube() -> Mesh<Vec4> {
                 i += 1;
                 Vec4::from_array(vertex_colors[i - 1])
             })
-            .map_positions(|pos| pos + vec4(-0.5, -0.5, 0.0, 0.0))
+            .map_positions(|pos| pos + vec3(-0.5, -0.5, 0.0))
     };
-    plus_z_face.transform(Mat4::from_translation(vec3(0.0, 0.0, 0.5)));
+    plus_z_face.transform_affine(Affine3::from_translation(vec3(0.0, 0.0, 0.5)));
 
     // relative to the +Z face
     let transformations = [
-        Mat4::IDENTITY,
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), PI),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(0.0, 1.0, 0.0), -FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
-        Mat4::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
+        Affine3::IDENTITY,
+        Affine3::from_axis_angle(vec3(0.0, 1.0, 0.0), PI),
+        Affine3::from_axis_angle(vec3(0.0, 1.0, 0.0), FRAC_PI_2),
+        Affine3::from_axis_angle(vec3(0.0, 1.0, 0.0), -FRAC_PI_2),
+        Affine3::from_axis_angle(vec3(1.0, 0.0, 0.0), FRAC_PI_2),
+        Affine3::from_axis_angle(vec3(1.0, 0.0, 0.0), -FRAC_PI_2),
     ];
 
     let mut cube = Mesh::new_empty();
     for transform in transformations {
         let mut next_face = plus_z_face.clone();
-        next_face.transform(transform);
+        next_face.transform_affine(transform);
 
         cube.append(&mut next_face);
     }
@@ -153,7 +158,7 @@ pub fn floor() -> Mesh<Vec4> {
         };
         let mut square = unit_square()
             .map_data(|_| colour)
-            .map_positions(|pos| pos + vec4(i as f32, j as f32, 0.0, 0.0));
+            .map_positions(|pos| pos + vec3(i as f32, j as f32, 0.0));
         mesh.append(&mut square)
     });
     mesh

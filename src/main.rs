@@ -5,7 +5,7 @@ mod world;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{IVec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles, vec3};
+use glam::{IVec3, Quat, Vec2, Vec3, Vec3Swizzles, vec3};
 
 use anim::Anim;
 
@@ -20,7 +20,7 @@ fn main() {
     let cube_meshes: Vec<_> = (0..CUBE_COUNT)
         .map(|_| {
             let cube = mesh::colorful_cube();
-            cube.map_positions(|v| v.with_xyz(v.xyz() * CUBE_SIDE_LENGTH))
+            cube.map_positions(|v| v.xyz() * CUBE_SIDE_LENGTH)
         })
         .collect();
     let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
