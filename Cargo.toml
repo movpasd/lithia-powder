@@ -14,3 +14,6 @@ shaderc = "0.10.1"
 
 [dev-dependencies]
 clippy = "0.0.302"
+
+[lints.clippy]
+let_and_return = "allow"

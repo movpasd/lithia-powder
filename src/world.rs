@@ -1,6 +1,6 @@
 //! voxel map and mesh generation utilities
 
-use glam::{UVec3, Vec4, uvec3, vec4};
+use glam::{IVec3, Vec4, ivec3, vec4};
 
 use super::mesh::Mesh;
 
@@ -40,55 +40,55 @@ impl Chunk {
     }
     pub fn from_fn<F>(f: F) -> Self
     where
-        F: Fn(UVec3) -> Block,
+        F: Fn(IVec3) -> Block,
     {
         Self {
-            blocks: Box::new(std::array::from_fn(|idx| f(Self::idx_to_cell_id(idx)))),
+            blocks: Box::new(std::array::from_fn(|idx| f(Self::idx_to_cell_loc(idx)))),
         }
     }
-    pub fn get_block(&self, cell_id: UVec3) -> Block {
-        self.blocks[Self::cell_id_to_idx(cell_id)]
+    pub fn get_block(&self, cell_loc: IVec3) -> Block {
+        self.blocks[Self::cell_loc_to_idx(cell_loc)]
     }
-    pub fn try_get_block(&self, cell_id: UVec3) -> Option<Block> {
-        self.blocks.get(Self::cell_id_to_idx(cell_id)).copied()
+    pub fn try_get_block(&self, cell_loc: IVec3) -> Option<Block> {
+        self.blocks.get(Self::cell_loc_to_idx(cell_loc)).copied()
     }
     pub fn iter(&self) -> impl Iterator<Item = &Block> {
         self.blocks.iter()
     }
-    pub fn iter_indexed(&self) -> impl Iterator<Item = (UVec3, &Block)> {
+    pub fn iter_indexed(&self) -> impl Iterator<Item = (IVec3, &Block)> {
         self.blocks
             .iter()
             .enumerate()
-            .map(|(idx, b)| (Self::idx_to_cell_id(idx), b))
+            .map(|(idx, b)| (Self::idx_to_cell_loc(idx), b))
     }
 }
 impl Chunk {
-    fn cell_id_to_idx(cell_id: UVec3) -> usize {
-        (cell_id.x * 32 * 32 + cell_id.y * 32 + cell_id.z) as usize
+    fn cell_loc_to_idx(cell_loc: IVec3) -> usize {
+        (cell_loc.x * 32 * 32 + cell_loc.y * 32 + cell_loc.z) as usize
     }
-    fn idx_to_cell_id(idx: usize) -> UVec3 {
-        let idx_u32 = idx as u32;
+    fn idx_to_cell_loc(idx: usize) -> IVec3 {
+        let idx_u32 = idx as i32;
         let x = idx_u32 / (32 * 32);
         let x_rem = idx_u32 % (32 * 32);
         let y = x_rem / 32;
         let y_rem = x_rem % 32;
         let z = y_rem;
 
-        uvec3(x, y, z)
+        ivec3(x, y, z)
     }
 }
 
 impl Chunk {
-    fn to_mesh(&self) -> Mesh<Vec4> {
+    pub fn to_mesh(&self) -> Mesh<Vec4> {
         chunk_mesh_building::chunk_to_mesh(self)
     }
 }
 mod chunk_mesh_building {
     use std::iter::zip;
 
-    use glam::{IVec3, Mat4, UVec3, Vec3, Vec4, ivec3, uvec3};
+    use glam::{IVec3, Mat4, Vec3, Vec4, ivec3};
 
-    use super::{Block, Chunk};
+    use super::{Chunk};
     use crate::mesh::{self, Mesh};
 
     const FACE_CELL_DELTAS: [IVec3; 6] = [
@@ -112,13 +112,13 @@ mod chunk_mesh_building {
 
     pub fn chunk_to_mesh(chunk: &Chunk) -> Mesh<Vec4> {
         let mut mesh = Mesh::<Vec4>::new_empty();
-        for (cell_id, block) in chunk.iter_indexed() {
+        for (cell_loc, block) in chunk.iter_indexed() {
             'faces_loop: for (cell_delta, (rot_axis, rot_angle)) in
                 zip(FACE_CELL_DELTAS, FACE_ROTATIONS)
             {
                 let cull_face = !block.is_solid()
                     || chunk
-                        .try_get_block(cell_id.wrapping_add(cell_delta.as_uvec3()))
+                        .try_get_block(cell_loc + cell_delta)
                         .map(|neighbour| neighbour.is_solid())
                         .unwrap_or(false);
                 if cull_face {
@@ -130,7 +130,7 @@ mod chunk_mesh_building {
                     Mat4::from_axis_angle(rot_axis, rot_angle)
                         * Mat4::from_translation(Vec3::Z * 0.5),
                 );
-                face.transform(Mat4::from_translation(cell_id.as_vec3() + 0.5));
+                face.transform(Mat4::from_translation(cell_loc.as_vec3() + 0.5));
                 face.transform(Mat4::from_scale(Vec3::ONE * Chunk::BLOCK_SIZE));
                 mesh.append(&mut face);
             }

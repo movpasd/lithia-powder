@@ -25,6 +25,8 @@ const RETINA_WIDTH: f32 = 320.0;
 const RETINA_HEIGHT: f32 = 240.0;
 const RETINA_TO_SCREEN_SCALE: f32 = 4.0;
 
+const MESH_VBUF_SIZE_MB: u32 = 2;
+
 pub struct State {
     window: Window,
     retina: Retina,
@@ -84,7 +86,7 @@ impl State {
         let mesh_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
-            .with_size(1_024 * 1_024)
+            .with_size(MESH_VBUF_SIZE_MB * 1_024 * 1_024)
             .build()
             .unwrap();
         let mesh_ibuf = device

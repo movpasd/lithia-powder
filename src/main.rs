@@ -1,11 +1,11 @@
-mod gfx;
 mod anim;
+mod gfx;
 mod mesh;
 mod world;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
+use glam::{IVec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles, vec3};
 
 use anim::Anim;
 
@@ -55,6 +55,20 @@ fn main() {
         })
         .collect();
 
+    // chunk definition
+    let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
+        if z <= x && z <= y && z <= 32 - x && z <= 32 - y {
+            world::Block::Sand
+        } else {
+            world::Block::Air
+        }
+    });
+    let chunk_mesh = chunk.to_mesh();
+    let chunk_pose = gfx::Pose {
+        position: vec3(20.0, 0.0, 0.0),
+        rotation: Quat::IDENTITY,
+    };
+
     // GPU resources and declaration
     let mut gfx_state = gfx::State::new(&sdl);
     println!(
@@ -84,7 +98,11 @@ fn main() {
     // mesh data upload
     {
         let floor_mesh_container = [floor_mesh];
-        let meshes = floor_mesh_container.iter().chain(&cube_meshes);
+        let chunk_mesh_container = [chunk_mesh];
+        let meshes = floor_mesh_container
+            .iter()
+            .chain(&cube_meshes)
+            .chain(&chunk_mesh_container);
         gfx_state.update_meshes(meshes);
     }
 
@@ -153,7 +171,11 @@ fn main() {
         // render
         {
             let floor_pose_container = [floor_pose];
-            let poses = floor_pose_container.iter().chain(&cube_poses);
+            let chunk_pose_container = [chunk_pose];
+            let poses = floor_pose_container
+                .iter()
+                .chain(&cube_poses)
+                .chain(&chunk_pose_container);
             gfx_state.render(&eyeball, poses, &sunlight);
         }
 
