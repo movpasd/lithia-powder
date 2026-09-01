@@ -117,11 +117,6 @@ mod chunk_mesh_building {
     pub fn chunk_to_mesh(chunk: &Chunk) -> Mesh<Vec4> {
         let mut mesh = Mesh::<Vec4>::new_empty();
         for (cell_loc, block) in chunk.iter_indexed() {
-            if cell_loc.y == 0 {
-                dbg!(cell_loc);
-                dbg!(chunk.try_get_block(cell_loc + ivec3(0, -1, 0)));
-            }
-
             'faces_loop: for (cell_delta, (rot_axis, rot_angle)) in
                 zip(FACE_CELL_DELTAS, FACE_ROTATIONS)
             {
