@@ -50,7 +50,11 @@ impl Chunk {
         self.blocks[Self::cell_loc_to_idx(cell_loc)]
     }
     pub fn try_get_block(&self, cell_loc: IVec3) -> Option<Block> {
-        self.blocks.get(Self::cell_loc_to_idx(cell_loc)).copied()
+        if cell_loc.cmplt(IVec3::ZERO).any() || cell_loc.cmpgt(IVec3::ONE * 31).any() {
+            None
+        } else {
+            self.blocks.get(Self::cell_loc_to_idx(cell_loc)).copied()
+        }
     }
     pub fn iter(&self) -> impl Iterator<Item = &Block> {
         self.blocks.iter()
@@ -86,9 +90,9 @@ impl Chunk {
 mod chunk_mesh_building {
     use std::iter::zip;
 
-    use glam::{IVec3, Mat4, Vec3, Vec4, ivec3};
+    use glam::{IVec3, Mat4, Vec3, Vec4, ivec3, vec3};
 
-    use super::{Chunk};
+    use super::Chunk;
     use crate::mesh::{self, Mesh};
 
     const FACE_CELL_DELTAS: [IVec3; 6] = [
@@ -102,17 +106,22 @@ mod chunk_mesh_building {
     /// rotations to get from the +Z face to the corresponding face, represented as an
     /// axis and an angle
     const FACE_ROTATIONS: [(Vec3, f32); 6] = [
-        (Vec3::Y, 90_f32.to_degrees()),
-        (Vec3::Y, -90_f32.to_degrees()),
-        (Vec3::X, -90_f32.to_degrees()),
-        (Vec3::X, 90_f32.to_degrees()),
-        (Vec3::X, 0_f32.to_degrees()),
-        (Vec3::X, 180_f32.to_degrees()),
+        (Vec3::Y, 90_f32.to_radians()),
+        (Vec3::Y, -90_f32.to_radians()),
+        (Vec3::X, -90_f32.to_radians()),
+        (Vec3::X, 90_f32.to_radians()),
+        (Vec3::X, 0_f32.to_radians()),
+        (Vec3::X, 180_f32.to_radians()),
     ];
 
     pub fn chunk_to_mesh(chunk: &Chunk) -> Mesh<Vec4> {
         let mut mesh = Mesh::<Vec4>::new_empty();
         for (cell_loc, block) in chunk.iter_indexed() {
+            if cell_loc.y == 0 {
+                dbg!(cell_loc);
+                dbg!(chunk.try_get_block(cell_loc + ivec3(0, -1, 0)));
+            }
+
             'faces_loop: for (cell_delta, (rot_axis, rot_angle)) in
                 zip(FACE_CELL_DELTAS, FACE_ROTATIONS)
             {
@@ -128,7 +137,7 @@ mod chunk_mesh_building {
                 let mut face = mesh::unit_square().map_data(|_| block.color());
                 face.transform(
                     Mat4::from_axis_angle(rot_axis, rot_angle)
-                        * Mat4::from_translation(Vec3::Z * 0.5),
+                        * Mat4::from_translation(vec3(-0.5, -0.5, 0.5)),
                 );
                 face.transform(Mat4::from_translation(cell_loc.as_vec3() + 0.5));
                 face.transform(Mat4::from_scale(Vec3::ONE * Chunk::BLOCK_SIZE));

@@ -57,7 +57,7 @@ fn main() {
 
     // chunk definition
     let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
-        if z <= x && z <= y && z <= 32 - x && z <= 32 - y {
+        if z <= x && z <= y && z < 32 - x && z < 32 - y {
             world::Block::Sand
         } else {
             world::Block::Air
@@ -65,7 +65,7 @@ fn main() {
     });
     let chunk_mesh = chunk.to_mesh();
     let chunk_pose = gfx::Pose {
-        position: vec3(20.0, 0.0, 0.0),
+        position: vec3(10.0, -8.0, 0.0),
         rotation: Quat::IDENTITY,
     };
 
@@ -233,9 +233,9 @@ impl Player {
 
     fn new_at_spawn() -> Self {
         Self {
-            position: vec3(0.0, 0.0, 2.0),
+            position: vec3(-5.0, 0.0, 9.0),
             azimuth: 0.0,
-            pitch: 0.0,
+            pitch: -30_f32.to_radians(),
             dash: false,
         }
     }
