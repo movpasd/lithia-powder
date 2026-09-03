@@ -1,6 +1,6 @@
-use glam::{vec2, vec3, vec4, Mat4, Quat, Vec2, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4, vec2, vec3, vec4};
 use sdl3::{
-    self,
+    self, Sdl,
     gpu::{
         BlitInfo, Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription,
         ColorTargetInfo, CommandBuffer, CompareOp, CullMode, DepthStencilState,
@@ -13,7 +13,6 @@ use sdl3::{
     },
     pixels::Color,
     video::Window,
-    Sdl,
 };
 use std::ffi::CStr;
 
@@ -352,7 +351,7 @@ impl State {
     /// starts a copy pass
     pub fn update_meshes<'a>(
         &mut self,
-        meshes: impl IntoIterator<Item = &'a super::mesh::Mesh<Vec4>>,
+        meshes: impl IntoIterator<Item = &'a super::mesh::Mesh<MeshVertexData>>,
     ) {
         // accumulate data into local byte array, keeping track of entries
         let mut vbuf_data: Vec<u8> = vec![];
@@ -668,7 +667,8 @@ struct GpuMeshVertex {
     model_normal: Vec4,
     color: Vec4,
     mesh_id: u32,
-    _pad: [u8; 12],
+    corner_occlusion: f32,
+    _pad: [u8; 8],
 }
 impl GpuMeshVertex {
     fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
@@ -693,18 +693,30 @@ impl GpuMeshVertex {
                 .with_location(3)
                 .with_offset(48)
                 .with_format(VertexElementFormat::Uint),
+            VertexAttribute::new()
+                .with_buffer_slot(buffer_slot)
+                .with_location(4)
+                .with_offset(52)
+                .with_format(VertexElementFormat::Float),
         ]
     }
 
-    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::mesh::Vertex<Vec4>) -> Self {
+    fn from_mesh_vertex(mesh_id: u32, vertex: &super::mesh::Vertex<MeshVertexData>) -> Self {
         Self {
-            model_position: mesh_vertex.position.extend(1.0),
-            color: mesh_vertex.data,
-            model_normal: mesh_vertex.normal.extend(0.0),
+            model_position: vertex.position.extend(1.0),
+            color: vertex.data.color,
+            model_normal: vertex.normal.extend(0.0),
             mesh_id,
+            corner_occlusion: vertex.data.corner_occlusion,
             _pad: [0; _],
         }
     }
+}
+/// data required for the mesh
+#[derive(Debug, Clone, Copy)]
+pub struct MeshVertexData {
+    pub color: Vec4,
+    pub corner_occlusion: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]

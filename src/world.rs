@@ -99,6 +99,15 @@ pub enum CornerState {
     TwoFaces,
     ThreeFaces,
 }
+impl CornerState {
+    pub fn corner_occlusion(&self) -> f32 {
+        match self {
+            CornerState::NoCorner => 0.0,
+            CornerState::TwoFaces => 0.2,
+            CornerState::ThreeFaces => 0.4,
+        }
+    }
+}
 impl Chunk {
     pub fn to_mesh(&self) -> Mesh<ChunkVertexData> {
         chunk_mesh_building::chunk_to_mesh(self)

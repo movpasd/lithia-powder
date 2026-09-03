@@ -14,6 +14,7 @@ layout(location = 0) in vec4 sColor;
 layout(location = 1) in float sLampIllumination;
 layout(location = 2) in vec4 sWorldPosition;
 layout(location = 3) in vec4 sWorldNormal;
+layout(location = 4) in float sCornerOcclusion;
 
 layout(location = 0) out vec4 fColor;
 
@@ -37,5 +38,5 @@ void main() {
     float highlightIntensity = max(0.0, 1.0 - angleFromSpecularHighlight / HIGHLIGHT_ANGLE_WIDTH);
     highlightIntensity = pow(highlightIntensity, 3.0);
 
-    fColor = sColor * lightingMultiplier + HIGHLIGHT_MULTIPLIER * highlightIntensity;
+    fColor = sColor * lightingMultiplier * (1.0 - sCornerOcclusion) + HIGHLIGHT_MULTIPLIER * highlightIntensity;
 }

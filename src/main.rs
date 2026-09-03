@@ -15,12 +15,19 @@ fn main() {
     // cube definition
     const CUBE_COUNT: usize = 7;
     const CUBE_SIDE_LENGTH: f32 = 0.67;
-    let floor_mesh = mesh::floor();
+    let floor_mesh = mesh::floor().map_data(|color| gfx::MeshVertexData {
+        color,
+        corner_occlusion: 0.0,
+    });
     let floor_pose = gfx::Pose::default();
     let cube_meshes: Vec<_> = (0..CUBE_COUNT)
         .map(|_| {
             let cube = mesh::colorful_cube();
             cube.map_positions(|v| v.xyz() * CUBE_SIDE_LENGTH)
+                .map_data(|color| gfx::MeshVertexData {
+                    color,
+                    corner_occlusion: 0.0,
+                })
         })
         .collect();
     let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
@@ -65,7 +72,10 @@ fn main() {
             world::Block::Air
         }
     });
-    let chunk_mesh = chunk.to_mesh().map_data(|d| d.color);
+    let chunk_mesh = chunk.to_mesh().map_data(|d| gfx::MeshVertexData {
+        color: d.color,
+        corner_occlusion: d.corner_state.corner_occlusion(),
+    });
     let chunk_pose = gfx::Pose {
         position: vec3(10.0, -8.0, 0.0),
         rotation: Quat::IDENTITY,
@@ -99,13 +109,9 @@ fn main() {
 
     // mesh data upload
     {
-        let floor_mesh_container = [floor_mesh];
-        let chunk_mesh_container = [chunk_mesh];
-        let meshes = floor_mesh_container
-            .iter()
-            .chain(&cube_meshes)
-            .chain(&chunk_mesh_container);
-        gfx_state.update_meshes(meshes);
+        let gfx_meshes: Vec<mesh::Mesh<gfx::MeshVertexData>> =
+            [&[floor_mesh], cube_meshes.as_slice(), &[chunk_mesh]].concat();
+        gfx_state.update_meshes(&gfx_meshes);
     }
 
     // event loop

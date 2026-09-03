@@ -19,15 +19,18 @@ layout(location = 0) in vec4 vModelPosition;
 layout(location = 1) in vec4 vModelNormal;
 layout(location = 2) in vec4 vColor;
 layout(location = 3) in uint vMeshId;
+layout(location = 4) in float vCornerOcclusion;
 
 layout(location = 0) out vec4 sColor;
 layout(location = 1) out float sLampIllumination;
 layout(location = 2) out vec4 sWorldPosition;
 layout(location = 3) out vec4 sWorldNormal;
+layout(location = 4) out float sCornerOcclusion;
 
 
 void main() {
     sColor = vColor;
+    sCornerOcclusion = vCornerOcclusion;
 
     mat4 poseTransform = bMeshData.poseTransforms[vMeshId];
     vec4 worldPosition = poseTransform * vModelPosition;
