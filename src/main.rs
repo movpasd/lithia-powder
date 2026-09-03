@@ -57,15 +57,15 @@ fn main() {
 
     // chunk definition
     let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
-        // let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
-        let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
+        let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
+        // let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
         if include_cell {
             world::Block::Sand
         } else {
             world::Block::Air
         }
     });
-    let chunk_mesh = chunk.to_mesh();
+    let chunk_mesh = chunk.to_mesh().map_data(|d| d.color);
     let chunk_pose = gfx::Pose {
         position: vec3(10.0, -8.0, 0.0),
         rotation: Quat::IDENTITY,

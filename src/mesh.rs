@@ -7,6 +7,18 @@ pub struct Vertex<D> {
     pub normal: Vec3,
     pub data: D,
 }
+impl<D> Vertex<D> {
+    pub fn map_data<D2, F>(self, mut f: F) -> Vertex<D2>
+    where
+        F: FnMut(D) -> D2,
+    {
+        Vertex {
+            position: self.position,
+            normal: self.normal,
+            data: f(self.data),
+        }
+    }
+}
 
 /// (do not store more than u32::MAX)
 #[derive(Debug, Clone)]
@@ -54,6 +66,15 @@ impl<D> Mesh<D> {
                     data: f(v.data),
                 })
                 .collect(),
+            indexes: self.indexes.clone(),
+        }
+    }
+    pub fn map_vertexes<D2, F>(self, mut f: F) -> Mesh<D2>
+    where
+        F: FnMut(Vertex<D>) -> Vertex<D2>,
+    {
+        Mesh {
+            vertexes: self.vertexes.into_iter().map(|v| f(v)).collect(),
             indexes: self.indexes.clone(),
         }
     }
