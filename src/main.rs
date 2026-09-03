@@ -1,7 +1,7 @@
-mod anim;
-mod gfx;
-mod mesh;
-mod world;
+pub mod anim;
+pub mod gfx;
+pub mod mesh;
+pub mod world;
 
 use std::{f32::consts::TAU, time::Instant};
 

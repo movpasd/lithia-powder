@@ -62,7 +62,7 @@ impl<T: Copy + Sized + 'static> Anim<T> {
     pub fn constant(v: T) -> Self {
         Self::func(1.0, move |_| v)
     }
-    pub fn default() -> Self
+    pub fn use_default() -> Self
     where
         T: Default,
     {
