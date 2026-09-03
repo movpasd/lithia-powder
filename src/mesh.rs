@@ -69,12 +69,12 @@ impl<D> Mesh<D> {
             indexes: self.indexes.clone(),
         }
     }
-    pub fn map_vertexes<D2, F>(self, mut f: F) -> Mesh<D2>
+    pub fn map_vertexes<D2, F>(self, f: F) -> Mesh<D2>
     where
         F: FnMut(Vertex<D>) -> Vertex<D2>,
     {
         Mesh {
-            vertexes: self.vertexes.into_iter().map(|v| f(v)).collect(),
+            vertexes: self.vertexes.into_iter().map(f).collect(),
             indexes: self.indexes.clone(),
         }
     }
