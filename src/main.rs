@@ -64,7 +64,8 @@ fn main() {
 
     // chunk definition
     let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
-        let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
+        let include_cell = (z <= x && z <= y && z < 32 - x && z < 32 - y)
+            && !((x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 5_i32.pow(2));
         // let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
         if include_cell {
             world::Block::Sand

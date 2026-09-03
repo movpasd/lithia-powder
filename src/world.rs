@@ -103,8 +103,8 @@ impl CornerState {
     pub fn corner_occlusion(&self) -> f32 {
         match self {
             CornerState::NoCorner => 0.0,
-            CornerState::TwoFaces => 0.2,
-            CornerState::ThreeFaces => 0.4,
+            CornerState::TwoFaces => 0.33,
+            CornerState::ThreeFaces => 0.67,
         }
     }
 }
@@ -188,10 +188,13 @@ mod chunk_mesh_building {
                             block_centre
                                 + corner_diagonal.rotate_axis(face_normal, -45_f32.to_radians()),
                         ));
+                        let is_cross_solid = is_solid(chunk.try_sample_block(
+                            block_centre + corner_diagonal.rotate_axis(face_normal, 0.0),
+                        ));
 
                         if is_left_solid && is_right_solid {
                             CornerState::ThreeFaces
-                        } else if is_left_solid || is_right_solid {
+                        } else if is_left_solid || is_right_solid || is_cross_solid {
                             CornerState::TwoFaces
                         } else {
                             CornerState::NoCorner

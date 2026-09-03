@@ -38,5 +38,7 @@ void main() {
     float highlightIntensity = max(0.0, 1.0 - angleFromSpecularHighlight / HIGHLIGHT_ANGLE_WIDTH);
     highlightIntensity = pow(highlightIntensity, 3.0);
 
-    fColor = sColor * lightingMultiplier * (1.0 - sCornerOcclusion) + HIGHLIGHT_MULTIPLIER * highlightIntensity;
+    float cornerOcclusionMultiplier = pow(1.0 - sCornerOcclusion, 2.0);
+
+    fColor = sColor * lightingMultiplier * cornerOcclusionMultiplier + HIGHLIGHT_MULTIPLIER * highlightIntensity;
 }
