@@ -1,11 +1,11 @@
-mod gfx;
 mod anim;
+mod gfx;
 mod mesh;
-mod voxel;
+mod world;
 
 use std::{f32::consts::TAU, time::Instant};
 
-use glam::{vec3, Quat, Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
+use glam::{IVec3, Quat, Vec2, Vec3, Vec3Swizzles, vec3};
 
 use anim::Anim;
 
@@ -13,14 +13,14 @@ fn main() {
     let sdl = sdl3::init().unwrap();
 
     // cube definition
-    const CUBE_COUNT: usize = 3;
+    const CUBE_COUNT: usize = 7;
     const CUBE_SIDE_LENGTH: f32 = 0.67;
     let floor_mesh = mesh::floor();
     let floor_pose = gfx::Pose::default();
     let cube_meshes: Vec<_> = (0..CUBE_COUNT)
         .map(|_| {
             let cube = mesh::colorful_cube();
-            cube.map_positions(|v| v.with_xyz(v.xyz() * CUBE_SIDE_LENGTH))
+            cube.map_positions(|v| v.xyz() * CUBE_SIDE_LENGTH)
         })
         .collect();
     let mut cube_poses: Vec<gfx::Pose> = [gfx::Pose::default(); CUBE_COUNT].into();
@@ -28,7 +28,7 @@ fn main() {
     let cube_anims: Vec<_> = (0..CUBE_COUNT)
         .map(|i| {
             let length_secs = 1.5;
-            let wait_secs = 0.2;
+            let wait_secs = 0.0;
             let total_secs = 2.0 * (length_secs + wait_secs);
             let distance = 4.0;
             let height = 3.0;
@@ -36,7 +36,7 @@ fn main() {
             let twist_count = 0.5;
 
             let angle = i as f32 * (TAU / (CUBE_COUNT as f32));
-            let shift = i as f32 * total_secs / (CUBE_COUNT as f32);
+            let shift = (3 * i) as f32 * total_secs / (CUBE_COUNT as f32);
 
             let ground_offset = Vec3::Z * 0.5 * CUBE_SIDE_LENGTH;
             let somersault = somersault_anim(
@@ -54,6 +54,22 @@ fn main() {
                 .loop_shifted(shift)
         })
         .collect();
+
+    // chunk definition
+    let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
+        // let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
+        let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
+        if include_cell {
+            world::Block::Sand
+        } else {
+            world::Block::Air
+        }
+    });
+    let chunk_mesh = chunk.to_mesh();
+    let chunk_pose = gfx::Pose {
+        position: vec3(10.0, -8.0, 0.0),
+        rotation: Quat::IDENTITY,
+    };
 
     // GPU resources and declaration
     let mut gfx_state = gfx::State::new(&sdl);
@@ -84,7 +100,11 @@ fn main() {
     // mesh data upload
     {
         let floor_mesh_container = [floor_mesh];
-        let meshes = floor_mesh_container.iter().chain(&cube_meshes);
+        let chunk_mesh_container = [chunk_mesh];
+        let meshes = floor_mesh_container
+            .iter()
+            .chain(&cube_meshes)
+            .chain(&chunk_mesh_container);
         gfx_state.update_meshes(meshes);
     }
 
@@ -141,6 +161,7 @@ fn main() {
             if keyboard_state.is_scancode_pressed(Scancode::LShift) {
                 player.fly_down(DT);
             }
+            player.dash = keyboard_state.is_scancode_pressed(Scancode::LCtrl)
         }
 
         // logic
@@ -153,7 +174,11 @@ fn main() {
         // render
         {
             let floor_pose_container = [floor_pose];
-            let poses = floor_pose_container.iter().chain(&cube_poses);
+            let chunk_pose_container = [chunk_pose];
+            let poses = floor_pose_container
+                .iter()
+                .chain(&cube_poses)
+                .chain(&chunk_pose_container);
             gfx_state.render(&eyeball, poses, &sunlight);
         }
 
@@ -203,15 +228,17 @@ struct Player {
     position: Vec3,
     azimuth: f32,
     pitch: f32,
+    dash: bool,
 }
 impl Player {
     const EYE_HEIGHT: f32 = 1.7;
 
     fn new_at_spawn() -> Self {
         Self {
-            position: vec3(0.0, 0.0, 2.0),
+            position: vec3(-5.0, 0.0, 9.0),
             azimuth: 0.0,
-            pitch: 0.0,
+            pitch: -30_f32.to_radians(),
+            dash: false,
         }
     }
     fn eyeball(&self, fov: f32, aspect_ratio: f32) -> gfx::Eyeball {
@@ -244,25 +271,32 @@ impl Player {
     }
 
     // speeds in metres per second
-    const HORIZONTAL_SPEED: f32 = 3.0;
-    const VERTICAL_SPEEED: f32 = 3.0;
+    const SPEED: f32 = 3.0;
+    const DASH_MULTIPLIER: f32 = 3.0;
 
+    fn speed(&self) -> f32 {
+        if self.dash {
+            Self::DASH_MULTIPLIER * Self::SPEED
+        } else {
+            Self::SPEED
+        }
+    }
     fn move_forward(&mut self, dt: f32) {
-        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing();
+        self.position += self.speed() * dt * self.bearing();
     }
     fn move_backward(&mut self, dt: f32) {
-        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing();
+        self.position -= self.speed() * dt * self.bearing();
     }
     fn strafe_left(&mut self, dt: f32) {
-        self.position += Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+        self.position += self.speed() * dt * self.bearing_left();
     }
     fn strafe_right(&mut self, dt: f32) {
-        self.position -= Self::HORIZONTAL_SPEED * dt * self.bearing_left();
+        self.position -= self.speed() * dt * self.bearing_left();
     }
     fn fly_up(&mut self, dt: f32) {
-        self.position += Self::VERTICAL_SPEEED * dt * Vec3::Z;
+        self.position += self.speed() * dt * Vec3::Z;
     }
     fn fly_down(&mut self, dt: f32) {
-        self.position -= Self::VERTICAL_SPEEED * dt * Vec3::Z;
+        self.position -= self.speed() * dt * Vec3::Z;
     }
 }

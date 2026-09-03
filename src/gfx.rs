@@ -25,6 +25,8 @@ const RETINA_WIDTH: f32 = 320.0;
 const RETINA_HEIGHT: f32 = 240.0;
 const RETINA_TO_SCREEN_SCALE: f32 = 4.0;
 
+const MESH_VBUF_SIZE_MB: u32 = 2;
+
 pub struct State {
     window: Window,
     retina: Retina,
@@ -84,7 +86,7 @@ impl State {
         let mesh_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
-            .with_size(1_024 * 1_024)
+            .with_size(MESH_VBUF_SIZE_MB * 1_024 * 1_024)
             .build()
             .unwrap();
         let mesh_ibuf = device
@@ -696,9 +698,9 @@ impl GpuMeshVertex {
 
     fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &super::mesh::Vertex<Vec4>) -> Self {
         Self {
-            model_position: mesh_vertex.position,
+            model_position: mesh_vertex.position.extend(1.0),
             color: mesh_vertex.data,
-            model_normal: mesh_vertex.normal,
+            model_normal: mesh_vertex.normal.extend(0.0),
             mesh_id,
             _pad: [0; _],
         }
