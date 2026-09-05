@@ -2,7 +2,7 @@ mod mesh_renderer;
 mod retina;
 mod skybox_renderer;
 
-use glam::{Mat4, Quat, Vec3, Vec4, vec3, vec4};
+use glam::{Mat4, Quat, Vec3, Vec4, vec3};
 use sdl3::{
     self, Sdl,
     gpu::{
@@ -22,6 +22,8 @@ use std::ffi::CStr;
 
 use retina::Retina;
 
+use crate::gfx::skybox_renderer::SkyboxRenderer;
+
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const MAX_SCREEN_WIDTH: u32 = 1920;
@@ -36,12 +38,10 @@ pub struct State {
     window: Window,
     device: Device,
     retina: Retina,
+    skybox_renderer: SkyboxRenderer,
     mesh_pipeline: GraphicsPipeline,
-    skybox_pipeline: GraphicsPipeline,
     mesh_vbuf: Buffer,
     mesh_ibuf: Buffer,
-    skybox_vbuf: Buffer,
-    skybox_ibuf: Buffer,
     dbuf: Texture<'static>,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
@@ -63,9 +63,9 @@ impl State {
         let swapchain_texture_format = device.get_swapchain_texture_format(&window);
 
         let retina = Retina::new(&device, RETINA_WIDTH, RETINA_HEIGHT, RETINA_TO_SCREEN_SCALE);
+        let skybox_renderer = SkyboxRenderer::new(&device, Retina::TEXTURE_FORMAT);
 
         let mesh_pipeline = Self::new_mesh_render_pipeline(&device, swapchain_texture_format);
-        let skybox_pipeline = Self::new_skybox_render_pipeline(&device, swapchain_texture_format);
 
         // resource creation
         let mesh_vbuf = device
@@ -78,19 +78,6 @@ impl State {
             .create_buffer()
             .with_usage(BufferUsageFlags::INDEX)
             .with_size(1_024 * 1_024)
-            .build()
-            .unwrap();
-        // barely need any data for the skybox buffers
-        let skybox_vbuf = device
-            .create_buffer()
-            .with_usage(BufferUsageFlags::VERTEX)
-            .with_size(1_024)
-            .build()
-            .unwrap();
-        let skybox_ibuf = device
-            .create_buffer()
-            .with_usage(BufferUsageFlags::INDEX)
-            .with_size(1_024)
             .build()
             .unwrap();
         let dbuf = device
@@ -127,12 +114,10 @@ impl State {
             window,
             device,
             retina,
+            skybox_renderer,
             mesh_pipeline,
-            skybox_pipeline,
             mesh_vbuf,
             mesh_ibuf,
-            skybox_vbuf,
-            skybox_ibuf,
             dbuf,
             tbuf1,
             tbuf2,
@@ -241,98 +226,6 @@ impl State {
             .unwrap()
     }
 
-    fn new_skybox_render_pipeline(
-        device: &Device,
-        texture_format: TextureFormat,
-    ) -> GraphicsPipeline {
-        // load and compile shaders
-        let vertex_shader: Shader;
-        let fragment_shader: Shader;
-        {
-            use shaderc::ShaderKind;
-
-            let compiler = shaderc::Compiler::new().unwrap();
-
-            let vertex_source = include_str!("shaders/skybox.vert.glsl");
-            let vertex_ir = compiler
-                .compile_into_spirv(
-                    vertex_source,
-                    ShaderKind::Vertex,
-                    "shaders/skybox.vert.glsl",
-                    "main",
-                    None,
-                )
-                .unwrap();
-            vertex_shader = device
-                .create_shader()
-                .with_code(
-                    ShaderFormat::SPIRV,
-                    vertex_ir.as_binary_u8(),
-                    ShaderStage::Vertex,
-                )
-                .with_uniform_buffers(0)
-                .with_storage_buffers(0)
-                .build()
-                .unwrap();
-
-            let fragment_source = include_str!("shaders/skybox.frag.glsl");
-            let fragment_ir = compiler
-                .compile_into_spirv(
-                    fragment_source,
-                    ShaderKind::Fragment,
-                    "shaders/skybox.frag.glsl",
-                    "main",
-                    None,
-                )
-                .unwrap();
-            fragment_shader = device
-                .create_shader()
-                .with_code(
-                    ShaderFormat::SPIRV,
-                    fragment_ir.as_binary_u8(),
-                    ShaderStage::Fragment,
-                )
-                .with_uniform_buffers(1)
-                .build()
-                .unwrap();
-        }
-
-        device
-            .create_graphics_pipeline()
-            .with_vertex_shader(&vertex_shader)
-            .with_fragment_shader(&fragment_shader)
-            .with_vertex_input_state(
-                VertexInputState::new()
-                    .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                        .with_slot(0)
-                        .with_pitch(size_of::<GpuSkyboxVertex>() as u32)
-                        .with_input_rate(VertexInputRate::Vertex)])
-                    .with_vertex_attributes(&GpuSkyboxVertex::get_attributes(0)),
-            )
-            .with_primitive_type(PrimitiveType::TriangleList)
-            .with_rasterizer_state(
-                RasterizerState::new()
-                    .with_fill_mode(FillMode::Fill)
-                    .with_cull_mode(CullMode::Back)
-                    .with_front_face(FrontFace::CounterClockwise),
-            )
-            .with_depth_stencil_state(
-                DepthStencilState::new()
-                    .with_compare_op(CompareOp::Invalid)
-                    .with_enable_depth_test(false)
-                    .with_enable_depth_write(false),
-            )
-            .with_target_info(
-                GraphicsPipelineTargetInfo::new()
-                    .with_color_target_descriptions(&[
-                        ColorTargetDescription::new().with_format(texture_format)
-                    ])
-                    .with_has_depth_stencil_target(false),
-            )
-            .build()
-            .unwrap()
-    }
-
     /// starts a copy pass
     pub fn update_meshes<'a>(
         &mut self,
@@ -400,7 +293,7 @@ impl State {
 
     fn submit_skybox_update_pass(&self, eyeball: &Eyeball, cbuf: &CommandBuffer) {
         let copy_pass = self.device.begin_copy_pass(cbuf).unwrap();
-        let (vbuf_data, ibuf_data) = GpuSkyboxVertex::calculate_data(eyeball);
+        let (vbuf_data, ibuf_data) = skybox_renderer::GpuSkyboxVertex::calculate_data(eyeball);
         self.tbuf1.map(&self.device, true).mem_mut()[0] = vbuf_data;
         self.tbuf2.map(&self.device, true).mem_mut()[0] = ibuf_data;
         copy_pass.upload_to_gpu_buffer(
@@ -408,7 +301,7 @@ impl State {
                 .with_transfer_buffer(&self.tbuf1)
                 .with_offset(0),
             BufferRegion::new()
-                .with_buffer(&self.skybox_vbuf)
+                .with_buffer(&self.skybox_renderer.vbuf)
                 .with_offset(0)
                 .with_size(size_of_val(&vbuf_data) as u32),
             true,
@@ -418,7 +311,7 @@ impl State {
                 .with_transfer_buffer(&self.tbuf2)
                 .with_offset(0),
             BufferRegion::new()
-                .with_buffer(&self.skybox_ibuf)
+                .with_buffer(&self.skybox_renderer.ibuf)
                 .with_offset(0)
                 .with_size(size_of_val(&ibuf_data) as u32),
             true,
@@ -492,16 +385,16 @@ impl State {
             self.device
                 .set_viewport(&skybox_render_pass, self.retina.viewport());
 
-            skybox_render_pass.bind_graphics_pipeline(&self.skybox_pipeline);
+            skybox_render_pass.bind_graphics_pipeline(&self.skybox_renderer.pipeline);
             skybox_render_pass.bind_vertex_buffers(
                 0,
                 &[BufferBinding::new()
-                    .with_buffer(&self.skybox_vbuf)
+                    .with_buffer(&self.skybox_renderer.vbuf)
                     .with_offset(0)],
             );
             skybox_render_pass.bind_index_buffer(
                 &BufferBinding::new()
-                    .with_buffer(&self.skybox_ibuf)
+                    .with_buffer(&self.skybox_renderer.ibuf)
                     .with_offset(0),
                 IndexElementSize::_32BIT,
             );
@@ -644,50 +537,6 @@ impl GpuMeshVertex {
             mesh_id,
             _pad: [0; _],
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
-#[repr(C)]
-/// aligned vertex data for the vertex shader
-struct GpuSkyboxVertex {
-    ndc_position: Vec4,
-    world_normal: Vec4,
-}
-impl GpuSkyboxVertex {
-    fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
-        vec![
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(0)
-                .with_offset(0)
-                .with_format(VertexElementFormat::Float4),
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(1)
-                .with_offset(16)
-                .with_format(VertexElementFormat::Float4),
-        ]
-    }
-
-    fn calculate_data(eyeball: &Eyeball) -> ([Self; 4], [u32; 6]) {
-        let ndc_positions = [
-            vec4(-1.0, -1.0, 1.0, 1.0),
-            vec4(1.0, -1.0, 1.0, 1.0),
-            vec4(-1.0, 1.0, 1.0, 1.0),
-            vec4(1.0, 1.0, 1.0, 1.0),
-        ];
-        let inv_view = eyeball.view().transpose();
-        let inv_persp = eyeball.perspective().inverse();
-        let world_normals =
-            ndc_positions.map(|ndc_pos| (inv_view * inv_persp * ndc_pos).with_w(0.0));
-
-        let skybox_vertexes: [Self; 4] = std::array::from_fn(|i| Self {
-            ndc_position: ndc_positions[i],
-            world_normal: world_normals[i],
-        });
-
-        (skybox_vertexes, [0, 1, 3, 3, 2, 0])
     }
 }
 
