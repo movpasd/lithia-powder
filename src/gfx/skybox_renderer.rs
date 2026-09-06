@@ -90,6 +90,7 @@ impl SkyboxRenderer {
                         ShaderStage::Fragment,
                     )
                     .with_uniform_buffers(1)
+                    .with_storage_buffers(0)
                     .build()
                     .unwrap();
             }
@@ -176,6 +177,7 @@ impl SkyboxRenderer {
         command_buffer: &CommandBuffer,
         u_lamp: &ULamp,
     ) {
+        command_buffer.push_fragment_uniform_data(0, u_lamp);
         render_pass.bind_graphics_pipeline(&self.pipeline);
         render_pass.bind_vertex_buffers(
             0,
@@ -185,7 +187,6 @@ impl SkyboxRenderer {
             &BufferBinding::new().with_buffer(&self.ibuf).with_offset(0),
             IndexElementSize::_32BIT,
         );
-        command_buffer.push_fragment_uniform_data(0, &u_lamp);
         render_pass.draw_indexed_primitives(6, 1, 0, 0, 0);
     }
 }
