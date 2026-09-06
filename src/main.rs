@@ -97,16 +97,15 @@ fn main() {
     let sunlight_anim = sunlight_anim(SUNLIGHT_PERIOD);
     let mut sunlight: gfx::Sunlight;
 
-    // mesh data upload
-    {
-        let floor_mesh_container = [floor_mesh];
-        let chunk_mesh_container = [chunk_mesh];
-        let meshes = floor_mesh_container
-            .iter()
-            .chain(&cube_meshes)
-            .chain(&chunk_mesh_container);
-        gfx_state.update_meshes(meshes);
-    }
+    // mesh data
+    let mut mesh_update: Option<Vec<mesh::Mesh<glam::prelude::Vec4>>>;
+    mesh_update = {
+        let mut meshes = vec![];
+        meshes.push(floor_mesh);
+        meshes.extend(cube_meshes);
+        meshes.push(chunk_mesh);
+        Some(meshes)
+    };
 
     // event loop
     let start_time = Instant::now();
@@ -173,13 +172,15 @@ fn main() {
 
         // render
         {
-            let floor_pose_container = [floor_pose];
-            let chunk_pose_container = [chunk_pose];
-            let poses = floor_pose_container
-                .iter()
-                .chain(&cube_poses)
-                .chain(&chunk_pose_container);
-            gfx_state.render(&eyeball, poses, &sunlight);
+            let poses = {
+                let mut poses: Vec<gfx::Pose> = vec![];
+                poses.push(floor_pose);
+                poses.extend(&cube_poses);
+                poses.push(chunk_pose);
+                poses
+            };
+            gfx_state.render(&eyeball, &poses, &sunlight, mesh_update.as_deref());
+            mesh_update = None;
         }
 
         std::thread::sleep(std::time::Duration::from_millis(1_000 / 60));

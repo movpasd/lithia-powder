@@ -139,12 +139,12 @@ impl SkyboxRenderer {
     }
 
     pub fn prepare(
-        &self,
+        &mut self,
         device: &Device,
-        cbuf: &CommandBuffer,
+        command_buffer: &CommandBuffer,
         eyeball: &Eyeball,
     ) {
-        let copy_pass = device.begin_copy_pass(cbuf).unwrap();
+        let copy_pass = device.begin_copy_pass(command_buffer).unwrap();
         let (vbuf_data, ibuf_data) = GpuSkyboxVertex::calculate_data(eyeball);
         self.tbuf1.map(device, true).mem_mut()[0] = vbuf_data;
         self.tbuf2.map(device, true).mem_mut()[0] = ibuf_data;
