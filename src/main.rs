@@ -56,15 +56,25 @@ fn main() {
         .collect();
 
     // chunk definition
-    let chunk = world::Chunk::from_fn(|IVec3 { x, y, z }| {
-        // let include_cell = z <= x && z <= y && z < 32 - x && z < 32 - y;
-        let include_cell = (x - 16).pow(2) + (y - 16).pow(2) + (z - 16).pow(2) <= 15_i32.pow(2);
-        if include_cell {
-            world::Block::Sand
-        } else {
-            world::Block::Air
-        }
-    });
+    let chunk = world::Chunk::from_fn(
+        |IVec3 {
+             x: ix,
+             y: iy,
+             z: iz,
+         }| {
+            let (x, y, z) = (ix as f32 + 0.5, iy as f32 + 0.5, iz as f32 + 0.5);
+            let mut include_cell = z <= x && z <= y && z <= 32.0 - x && z <= 32.0 - y;
+            include_cell =
+                include_cell && (y - 16.0).powf(2.0) + (z - 6.0).powf(2.0) >= 2_f32.powf(2.0);
+            include_cell = include_cell
+                && (x - 16.0).powf(2.0) + (y - 16.0).powf(2.0) + (z - 6.0).powf(2.0) >= 5_f32.powf(2.0);
+            if include_cell {
+                world::Block::Sand
+            } else {
+                world::Block::Air
+            }
+        },
+    );
     let chunk_mesh = chunk.to_mesh();
     let chunk_pose = gfx::Pose {
         position: vec3(10.0, -8.0, 0.0),
