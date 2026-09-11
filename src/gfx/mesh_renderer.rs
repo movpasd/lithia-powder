@@ -14,8 +14,8 @@ use crate::geom::Pose;
 
 pub struct MeshRenderer {
     pipeline: GraphicsPipeline,
-    vbuf: Buffer,
-    ibuf: Buffer,
+    main_vbuf: Buffer,
+    main_ibuf: Buffer,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
     mesh_data_sbuf: Buffer,
@@ -53,6 +53,9 @@ impl MeshRenderer {
                     .unwrap();
             }
 
+            // all vertex attributes are stored in a single per-vertex vbuf, the main vbuf
+            const MAIN_VBUF_SLOT: u32 = 0;
+
             device
                 .create_graphics_pipeline()
                 .with_vertex_shader(&vertex_shader)
@@ -60,10 +63,31 @@ impl MeshRenderer {
                 .with_vertex_input_state(
                     VertexInputState::new()
                         .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                            .with_slot(0)
-                            .with_pitch(size_of::<GpuMeshVertex>() as u32)
+                            .with_slot(MAIN_VBUF_SLOT)
+                            .with_pitch(size_of::<MainVertex>() as u32)
                             .with_input_rate(VertexInputRate::Vertex)])
-                        .with_vertex_attributes(&GpuMeshVertex::get_attributes(0)),
+                        .with_vertex_attributes(&[
+                            VertexAttribute::new()
+                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_location(0)
+                                .with_offset(0)
+                                .with_format(VertexElementFormat::Float4),
+                            VertexAttribute::new()
+                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_location(1)
+                                .with_offset(16)
+                                .with_format(VertexElementFormat::Float4),
+                            VertexAttribute::new()
+                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_location(2)
+                                .with_offset(32)
+                                .with_format(VertexElementFormat::Float4),
+                            VertexAttribute::new()
+                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_location(3)
+                                .with_offset(48)
+                                .with_format(VertexElementFormat::Uint),
+                        ]),
                 )
                 .with_primitive_type(PrimitiveType::TriangleList)
                 .with_rasterizer_state(
@@ -90,13 +114,13 @@ impl MeshRenderer {
                 .unwrap()
         };
 
-        let vbuf = device
+        let main_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
-            .with_size(Self::MAX_VERTEXES * size_of::<GpuMeshVertex>() as u32)
+            .with_size(Self::MAX_VERTEXES * size_of::<MainVertex>() as u32)
             .build()
             .unwrap();
-        let ibuf = device
+        let main_ibuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::INDEX)
             .with_size(Self::MAX_INDEXES * size_of::<u32>() as u32)
@@ -110,20 +134,20 @@ impl MeshRenderer {
             .unwrap();
         let tbuf1 = device
             .create_transfer_buffer()
-            .with_size(vbuf.len())
+            .with_size(main_vbuf.len())
             .build()
             .unwrap();
         let tbuf2 = device
             .create_transfer_buffer()
-            .with_size(ibuf.len())
+            .with_size(main_ibuf.len())
             .build()
             .unwrap();
         let mesh_buf_entries = vec![];
 
         Self {
             pipeline,
-            vbuf,
-            ibuf,
+            main_vbuf,
+            main_ibuf,
             tbuf1,
             tbuf2,
             mesh_data_sbuf,
@@ -162,7 +186,7 @@ impl MeshRenderer {
             let gpu_vertexes: Vec<_> = mesh
                 .vertexes
                 .iter()
-                .map(|mesh_vertex| GpuMeshVertex::from_mesh_vertex(mesh_id as u32, mesh_vertex))
+                .map(|mesh_vertex| MainVertex::from_mesh_vertex(mesh_id as u32, mesh_vertex))
                 .collect();
 
             let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
@@ -189,15 +213,15 @@ impl MeshRenderer {
             copy_pass.upload_to_gpu_buffer(
                 TransferBufferLocation::new().with_transfer_buffer(&self.tbuf1),
                 BufferRegion::new()
-                    .with_buffer(&self.vbuf)
-                    .with_size(self.vbuf.len()),
+                    .with_buffer(&self.main_vbuf)
+                    .with_size(self.main_vbuf.len()),
                 true,
             );
             copy_pass.upload_to_gpu_buffer(
                 TransferBufferLocation::new().with_transfer_buffer(&self.tbuf2),
                 BufferRegion::new()
-                    .with_buffer(&self.ibuf)
-                    .with_size(self.ibuf.len()),
+                    .with_buffer(&self.main_ibuf)
+                    .with_size(self.main_ibuf.len()),
                 true,
             );
             device.end_copy_pass(copy_pass);
@@ -245,9 +269,9 @@ impl MeshRenderer {
         command_buffer.push_fragment_uniform_data(1, u_lamp);
 
         render_pass.bind_graphics_pipeline(&self.pipeline);
-        render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.vbuf)]);
+        render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.main_vbuf)]);
         render_pass.bind_index_buffer(
-            &BufferBinding::new().with_buffer(&self.ibuf),
+            &BufferBinding::new().with_buffer(&self.main_ibuf),
             IndexElementSize::_32BIT,
         );
         render_pass.bind_vertex_storage_buffers(0, std::slice::from_ref(&self.mesh_data_sbuf));
@@ -272,39 +296,14 @@ struct MeshBufferEntry {
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
 #[repr(C)]
 /// aligned vertex data for the vertex shader
-struct GpuMeshVertex {
+struct MainVertex {
     model_position: Vec4,
     model_normal: Vec4,
     color: Vec4,
     mesh_id: u32,
     _pad: [u8; 12],
 }
-impl GpuMeshVertex {
-    fn get_attributes(buffer_slot: u32) -> Vec<VertexAttribute> {
-        vec![
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(0)
-                .with_offset(0)
-                .with_format(VertexElementFormat::Float4),
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(1)
-                .with_offset(16)
-                .with_format(VertexElementFormat::Float4),
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(2)
-                .with_offset(32)
-                .with_format(VertexElementFormat::Float4),
-            VertexAttribute::new()
-                .with_buffer_slot(buffer_slot)
-                .with_location(3)
-                .with_offset(48)
-                .with_format(VertexElementFormat::Uint),
-        ]
-    }
-
+impl MainVertex {
     fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> Self {
         Self {
             model_position: mesh_vertex.position.extend(1.0),
@@ -326,6 +325,8 @@ struct SMeshData {
 mod shaders {
     use shaderc::{Compiler, ShaderKind};
 
+    // -- vert --
+
     pub const VERT_UBUF_COUNT: u32 = 2;
     pub const VERT_SBUF_COUNT: u32 = 1;
 
@@ -339,6 +340,8 @@ mod shaders {
                 .as_binary_u8(),
         )
     }
+
+    // -- frag --
 
     pub const FRAG_UBUF_COUNT: u32 = 2;
     pub const FRAG_SBUF_COUNT: u32 = 0;
