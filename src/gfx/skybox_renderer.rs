@@ -8,7 +8,7 @@ use sdl3::gpu::{
     VertexInputState,
 };
 
-use super::{Eyeball, ULamp};
+use super::{Eyeball, uniforms::ULamp};
 
 pub struct SkyboxRenderer {
     tbuf1: TransferBuffer,
@@ -139,12 +139,7 @@ impl SkyboxRenderer {
         }
     }
 
-    pub fn prepare(
-        &mut self,
-        device: &Device,
-        command_buffer: &CommandBuffer,
-        eyeball: &Eyeball,
-    ) {
+    pub fn prepare(&mut self, device: &Device, command_buffer: &CommandBuffer, eyeball: &Eyeball) {
         let copy_pass = device.begin_copy_pass(command_buffer).unwrap();
         let (vbuf_data, ibuf_data) = GpuSkyboxVertex::calculate_data(eyeball);
         self.tbuf1.map(device, true).mem_mut()[0] = vbuf_data;
@@ -171,12 +166,7 @@ impl SkyboxRenderer {
         );
         device.end_copy_pass(copy_pass);
     }
-    pub fn render(
-        &self,
-        render_pass: &RenderPass,
-        command_buffer: &CommandBuffer,
-        u_lamp: &ULamp,
-    ) {
+    pub fn render(&self, render_pass: &RenderPass, command_buffer: &CommandBuffer, u_lamp: &ULamp) {
         command_buffer.push_fragment_uniform_data(0, u_lamp);
         render_pass.bind_graphics_pipeline(&self.pipeline);
         render_pass.bind_vertex_buffers(

@@ -263,8 +263,8 @@ impl MeshRenderer {
         &self,
         command_buffer: &CommandBuffer,
         render_pass: &RenderPass,
-        u_eyeball: &super::UEyeball,
-        u_lamp: &super::ULamp,
+        u_eyeball: &super::uniforms::UEyeball,
+        u_lamp: &super::uniforms::ULamp,
     ) {
         command_buffer.push_vertex_uniform_data(0, u_eyeball);
         command_buffer.push_vertex_uniform_data(1, u_lamp);

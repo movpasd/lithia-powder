@@ -14,8 +14,8 @@ use sdl3::{
 };
 use std::ffi::CStr;
 
-use crate::mesh::Mesh;
 pub use crate::geom::Pose;
+use crate::mesh::Mesh;
 use mesh_renderer::MeshRenderer;
 use retina::Retina;
 use skybox_renderer::SkyboxRenderer;
@@ -101,8 +101,8 @@ impl State {
             .prepare(&self.device, &command_buffer, meshes_update, Some(poses));
 
         // uniforms
-        let u_eyeball = UEyeball::from_eyeball(eyeball);
-        let u_lamp = ULamp {
+        let u_eyeball = uniforms::UEyeball::from_eyeball(eyeball);
+        let u_lamp = uniforms::ULamp {
             from_direction: sunlight.from_direction.extend(0.0),
         };
 
@@ -182,6 +182,9 @@ impl State {
         }
     }
 }
+
+// -- scene definition stuff --
+
 #[derive(Debug, Clone, Copy)]
 pub struct Eyeball {
     pub position: Vec3,
@@ -210,30 +213,37 @@ impl Default for Eyeball {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct UEyeball {
-    world_position: Vec4,
-    view: Mat4,
-    view_perspective: Mat4,
-}
-impl UEyeball {
-    fn from_eyeball(eyeball: &Eyeball) -> Self {
-        let perspective = eyeball.perspective();
-        let view = eyeball.view();
-        Self {
-            world_position: eyeball.position.extend(1.0),
-            view,
-            view_perspective: perspective * view,
-        }
-    }
-}
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct ULamp {
-    from_direction: Vec4,
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct Sunlight {
     pub from_direction: Vec3,
+}
+
+/// module for shared uniforms
+pub mod uniforms {
+    use glam::{Mat4, Vec4};
+
+    use super::Eyeball;
+
+    #[derive(Debug, Clone, Copy)]
+    #[repr(C)]
+    pub struct UEyeball {
+        pub world_position: Vec4,
+        pub view: Mat4,
+        pub view_perspective: Mat4,
+    }
+    impl UEyeball {
+        pub fn from_eyeball(eyeball: &Eyeball) -> Self {
+            let perspective = eyeball.perspective();
+            let view = eyeball.view();
+            Self {
+                world_position: eyeball.position.extend(1.0),
+                view,
+                view_perspective: perspective * view,
+            }
+        }
+    }
+    #[derive(Debug, Clone, Copy)]
+    #[repr(C)]
+    pub struct ULamp {
+        pub from_direction: Vec4,
+    }
 }
