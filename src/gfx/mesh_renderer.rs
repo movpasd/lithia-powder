@@ -38,8 +38,8 @@ impl MeshRenderer {
                 vertex_shader = device
                     .create_shader()
                     .with_code(ShaderFormat::SPIRV, &vert_spirv, ShaderStage::Vertex)
-                    .with_uniform_buffers(2)
-                    .with_storage_buffers(1)
+                    .with_uniform_buffers(shaders::VERT_UBUF_COUNT)
+                    .with_storage_buffers(shaders::VERT_SBUF_COUNT)
                     .build()
                     .unwrap();
 
@@ -47,7 +47,8 @@ impl MeshRenderer {
                 fragment_shader = device
                     .create_shader()
                     .with_code(ShaderFormat::SPIRV, &frag_spirv, ShaderStage::Fragment)
-                    .with_uniform_buffers(2)
+                    .with_uniform_buffers(shaders::FRAG_UBUF_COUNT)
+                    .with_storage_buffers(shaders::FRAG_SBUF_COUNT)
                     .build()
                     .unwrap();
             }
@@ -325,9 +326,12 @@ struct SMeshData {
 mod shaders {
     use shaderc::{Compiler, ShaderKind};
 
-    const VERT_PATH: &str = "shaders/mesh.vert.glsl";
-    const VERT_SOURCE: &str = include_str!("shaders/mesh.vert.glsl");
+    pub const VERT_UBUF_COUNT: u32 = 2;
+    pub const VERT_SBUF_COUNT: u32 = 1;
+
     pub fn vert_spirv(compiler: &Compiler) -> Box<[u8]> {
+        const VERT_PATH: &str = "shaders/mesh.vert.glsl";
+        const VERT_SOURCE: &str = include_str!("shaders/mesh.vert.glsl");
         Box::from(
             compiler
                 .compile_into_spirv(VERT_SOURCE, ShaderKind::Vertex, VERT_PATH, "main", None)
@@ -336,9 +340,12 @@ mod shaders {
         )
     }
 
-    const FRAG_PATH: &str = "shaders/mesh.frag.glsl";
-    const FRAG_SOURCE: &str = include_str!("shaders/mesh.frag.glsl");
+    pub const FRAG_UBUF_COUNT: u32 = 2;
+    pub const FRAG_SBUF_COUNT: u32 = 0;
+
     pub fn frag_spirv(compiler: &Compiler) -> Box<[u8]> {
+        const FRAG_PATH: &str = "shaders/mesh.frag.glsl";
+        const FRAG_SOURCE: &str = include_str!("shaders/mesh.frag.glsl");
         Box::from(
             compiler
                 .compile_into_spirv(FRAG_SOURCE, ShaderKind::Fragment, FRAG_PATH, "main", None)
