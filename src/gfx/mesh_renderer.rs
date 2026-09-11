@@ -19,12 +19,15 @@ pub struct MeshRenderer {
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
     mesh_data_sbuf: Buffer,
-    mesh_buf_entries: Vec<MeshBufferEntry>,
+    mesh_entries: Vec<MeshEntry>,
 }
 impl MeshRenderer {
     const MAX_VERTEXES: u32 = 512 * 1_024;
     const MAX_INDEXES: u32 = 512 * 1_024;
     const MAX_MESHES: u32 = 512;
+
+    /// all vertex attributes are stored in a single per-vertex vbuf, the main vbuf
+    const MAIN_VBUF_SLOT: u32 = 0;
 
     pub fn new(device: &Device, texture_format: TextureFormat) -> Self {
         let pipeline = {
@@ -53,9 +56,6 @@ impl MeshRenderer {
                     .unwrap();
             }
 
-            // all vertex attributes are stored in a single per-vertex vbuf, the main vbuf
-            const MAIN_VBUF_SLOT: u32 = 0;
-
             fn expect_eq<T: PartialEq>(x: T, y: T) -> T {
                 (x == y).then_some(x).unwrap()
             }
@@ -66,13 +66,13 @@ impl MeshRenderer {
                 .with_vertex_input_state(
                     VertexInputState::new()
                         .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
-                            .with_slot(MAIN_VBUF_SLOT)
+                            .with_slot(Self::MAIN_VBUF_SLOT)
                             .with_pitch(size_of::<MainVbufVertex>() as u32)
                             .with_input_rate(VertexInputRate::Vertex)])
                         .with_vertex_attributes(&[
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MODEL_POSITION)
-                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_buffer_slot(Self::MAIN_VBUF_SLOT)
                                 .with_offset(MainVbufVertex::OFS_MODEL_POSITION)
                                 .with_format(expect_eq(
                                     MainVbufVertex::FMT_MODEL_POSITION,
@@ -80,7 +80,7 @@ impl MeshRenderer {
                                 )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MODEL_NORMAL)
-                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_buffer_slot(Self::MAIN_VBUF_SLOT)
                                 .with_offset(MainVbufVertex::OFS_MODEL_NORMAL)
                                 .with_format(expect_eq(
                                     MainVbufVertex::FMT_MODEL_NORMAL,
@@ -88,7 +88,7 @@ impl MeshRenderer {
                                 )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_COLOR)
-                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_buffer_slot(Self::MAIN_VBUF_SLOT)
                                 .with_offset(MainVbufVertex::OFS_COLOR)
                                 .with_format(expect_eq(
                                     MainVbufVertex::FMT_COLOR,
@@ -96,7 +96,7 @@ impl MeshRenderer {
                                 )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MESH_ID)
-                                .with_buffer_slot(MAIN_VBUF_SLOT)
+                                .with_buffer_slot(Self::MAIN_VBUF_SLOT)
                                 .with_offset(MainVbufVertex::OFS_MESH_ID)
                                 .with_format(expect_eq(
                                     MainVbufVertex::FMT_MESH_ID,
@@ -157,7 +157,7 @@ impl MeshRenderer {
             .with_size(main_ibuf.len())
             .build()
             .unwrap();
-        let mesh_buf_entries = vec![];
+        let mesh_entries = vec![];
 
         Self {
             pipeline,
@@ -166,7 +166,7 @@ impl MeshRenderer {
             tbuf1,
             tbuf2,
             mesh_data_sbuf,
-            mesh_buf_entries,
+            mesh_entries,
         }
     }
 
@@ -195,28 +195,30 @@ impl MeshRenderer {
         let mut vbuf_data: Vec<MainVbufVertex> = vec![];
         let mut ibuf_data: Vec<u32> = vec![];
         let mut mesh_buf_entries = vec![];
-        let mut next_first_index: u32 = 0;
-        let mut next_vertex_offset: i32 = 0;
-        for (mesh_id, mesh) in meshes.iter().enumerate() {
-            let gpu_vertexes: Vec<_> = mesh
-                .vertexes
-                .iter()
-                .map(|mesh_vertex| build_main_vertex(mesh_id as u32, mesh_vertex))
-                .collect();
+        {
+            let mut next_first_index: u32 = 0;
+            let mut next_vertex_offset: i32 = 0;
+            for (mesh_id, mesh) in meshes.iter().enumerate() {
+                let main_vbuf_vertexes: Vec<_> = mesh
+                    .vertexes
+                    .iter()
+                    .map(|mesh_vertex| build_main_vertex(mesh_id as u32, mesh_vertex))
+                    .collect();
 
-            vbuf_data.extend_from_slice(&gpu_vertexes);
-            ibuf_data.extend_from_slice(&mesh.indexes);
+                vbuf_data.extend_from_slice(&main_vbuf_vertexes);
+                ibuf_data.extend_from_slice(&mesh.indexes);
 
-            let mesh_index_count = mesh.indexes.len() as u32;
-            let mesh_vertex_count = mesh.vertexes.len() as i32;
-            let entry = MeshBufferEntry {
-                first_index: next_first_index,
-                num_indices: mesh_index_count,
-                vertex_offset: next_vertex_offset,
-            };
-            mesh_buf_entries.push(entry);
-            next_first_index += mesh_index_count;
-            next_vertex_offset += mesh_vertex_count;
+                let mesh_index_count = mesh.indexes.len() as u32;
+                let mesh_vertex_count = mesh.vertexes.len() as i32;
+                let entry = MeshEntry {
+                    first_index: next_first_index,
+                    num_indices: mesh_index_count,
+                    vertex_offset: next_vertex_offset,
+                };
+                mesh_buf_entries.push(entry);
+                next_first_index += mesh_index_count;
+                next_vertex_offset += mesh_vertex_count;
+            }
         }
         {
             self.tbuf1.map(device, true).mem_mut()[0..vbuf_data.len()].copy_from_slice(&vbuf_data);
@@ -240,7 +242,7 @@ impl MeshRenderer {
             device.end_copy_pass(copy_pass);
         }
 
-        self.mesh_buf_entries = mesh_buf_entries;
+        self.mesh_entries = mesh_buf_entries;
     }
 
     fn reupload_poses(&mut self, device: &Device, command_buffer: &CommandBuffer, poses: &[Pose]) {
@@ -273,38 +275,45 @@ impl MeshRenderer {
         &self,
         command_buffer: &CommandBuffer,
         render_pass: &RenderPass,
-        u_eyeball: &super::uniforms::UEyeball,
-        u_lamp: &super::uniforms::ULamp,
+        u_eyeball: &shaders::ShaderUEyeball,
+        u_lamp: &shaders::ShaderULamp,
     ) {
-        command_buffer.push_vertex_uniform_data(0, u_eyeball);
-        command_buffer.push_vertex_uniform_data(1, u_lamp);
-        command_buffer.push_fragment_uniform_data(0, u_eyeball);
-        command_buffer.push_fragment_uniform_data(1, u_lamp);
+        command_buffer.push_vertex_uniform_data(shaders::VERT_BINDING_UEYEBALL, u_eyeball);
+        command_buffer.push_vertex_uniform_data(shaders::VERT_BINDING_ULAMP, u_lamp);
+        command_buffer.push_fragment_uniform_data(shaders::FRAG_BINDING_UEYEBALL, u_eyeball);
+        command_buffer.push_fragment_uniform_data(shaders::FRAG_BINDING_ULAMP, u_lamp);
 
         render_pass.bind_graphics_pipeline(&self.pipeline);
-        render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.main_vbuf)]);
+        render_pass.bind_vertex_buffers(
+            Self::MAIN_VBUF_SLOT,
+            &[BufferBinding::new().with_buffer(&self.main_vbuf)],
+        );
         render_pass.bind_index_buffer(
             &BufferBinding::new().with_buffer(&self.main_ibuf),
             IndexElementSize::_32BIT,
         );
-        render_pass.bind_vertex_storage_buffers(0, std::slice::from_ref(&self.mesh_data_sbuf));
+        render_pass.bind_vertex_storage_buffers(
+            shaders::VERT_BINDING_SMESHDATA,
+            std::slice::from_ref(&self.mesh_data_sbuf),
+        );
 
-        for &MeshBufferEntry {
+        for &MeshEntry {
             first_index: ibuf_offset,
             num_indices: ibuf_count,
             vertex_offset: vbuf_offset,
-        } in self.mesh_buf_entries.iter()
+        } in self.mesh_entries.iter()
         {
             render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
         }
     }
 }
 
-struct MeshBufferEntry {
+struct MeshEntry {
     first_index: u32,
     num_indices: u32,
     vertex_offset: i32,
 }
+
 fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVbufVertex {
     MainVbufVertex {
         model_position: mesh_vertex.position.extend(1.0),
@@ -348,11 +357,15 @@ mod shaders {
     use sdl3::gpu::VertexElementFormat;
     use shaderc::{Compiler, ShaderKind};
 
+    use crate::gfx::uniforms::{UEyeball, ULamp};
+
+    // shared uniform types across both stages
+    pub type ShaderUEyeball = UEyeball;
+    pub type ShaderULamp = ULamp;
+
     // -- vert --
 
-    pub const VERT_UBUF_COUNT: u32 = 2;
-    pub const VERT_SBUF_COUNT: u32 = 1;
-
+    // source
     pub fn vert_spirv(compiler: &Compiler) -> Box<[u8]> {
         const VERT_PATH: &str = "shaders/mesh.vert.glsl";
         const VERT_SOURCE: &str = include_str!("shaders/mesh.vert.glsl");
@@ -379,11 +392,18 @@ mod shaders {
     pub const VALOC_MESH_ID: u32 = 3;
     pub const VAFMT_MESH_ID: VertexElementFormat = VertexElementFormat::Uint;
 
+    // uniforms
+    pub const VERT_UBUF_COUNT: u32 = 2;
+    pub const VERT_BINDING_UEYEBALL: u32 = 0;
+    pub const VERT_BINDING_ULAMP: u32 = 1;
+
+    // storage buffers
+    pub const VERT_SBUF_COUNT: u32 = 1;
+    pub const VERT_BINDING_SMESHDATA: u32 = 0;
+
     // -- frag --
 
-    pub const FRAG_UBUF_COUNT: u32 = 2;
-    pub const FRAG_SBUF_COUNT: u32 = 0;
-
+    // source
     pub fn frag_spirv(compiler: &Compiler) -> Box<[u8]> {
         const FRAG_PATH: &str = "shaders/mesh.frag.glsl";
         const FRAG_SOURCE: &str = include_str!("shaders/mesh.frag.glsl");
@@ -394,4 +414,12 @@ mod shaders {
                 .as_binary_u8(),
         )
     }
+
+    // uniforms
+    pub const FRAG_UBUF_COUNT: u32 = 2;
+    pub const FRAG_BINDING_UEYEBALL: u32 = 0;
+    pub const FRAG_BINDING_ULAMP: u32 = 1;
+
+    // storage buffers
+    pub const FRAG_SBUF_COUNT: u32 = 0;
 }
