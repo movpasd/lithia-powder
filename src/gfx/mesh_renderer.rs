@@ -1,4 +1,4 @@
-use glam::{Mat4, Quat, Vec3, Vec4};
+use glam::{Mat4, Vec4};
 use sdl3::gpu::{
     Buffer, BufferBinding, BufferRegion, BufferUsageFlags, ColorTargetDescription, CommandBuffer,
     CompareOp, CullMode, DepthStencilState, Device, FillMode, FrontFace, GraphicsPipeline,
@@ -9,6 +9,8 @@ use sdl3::gpu::{
 };
 
 use crate::mesh::{self, Mesh};
+
+use crate::geom::Pose;
 
 pub struct MeshRenderer {
     mesh_pipeline: GraphicsPipeline,
@@ -235,7 +237,7 @@ impl MeshRenderer {
         let pose_transforms = {
             let mut pose_transforms = [Mat4::ZERO; _];
             for (i, pose) in poses.iter().enumerate() {
-                pose_transforms[i] = pose.transform();
+                pose_transforms[i] = pose.to_transform();
             }
             pose_transforms
         };
@@ -288,17 +290,6 @@ impl MeshRenderer {
     }
 }
 
-/// represents the rigid body state of a mesh
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Pose {
-    pub position: Vec3,
-    pub rotation: Quat,
-}
-impl Pose {
-    fn transform(&self) -> Mat4 {
-        Mat4::from_rotation_translation(self.rotation, self.position)
-    }
-}
 
 struct MeshBufferEntry {
     first_index: u32,

@@ -1,4 +1,5 @@
 pub mod anim;
+pub mod geom;
 pub mod gfx;
 pub mod mesh;
 pub mod world;
@@ -67,7 +68,8 @@ fn main() {
             include_cell =
                 include_cell && (y - 16.0).powf(2.0) + (z - 6.0).powf(2.0) >= 2_f32.powf(2.0);
             include_cell = include_cell
-                && (x - 16.0).powf(2.0) + (y - 16.0).powf(2.0) + (z - 6.0).powf(2.0) >= 5_f32.powf(2.0);
+                && (x - 16.0).powf(2.0) + (y - 16.0).powf(2.0) + (z - 6.0).powf(2.0)
+                    >= 5_f32.powf(2.0);
             if include_cell {
                 world::Block::Sand
             } else {

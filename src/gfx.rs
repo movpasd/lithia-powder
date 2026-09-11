@@ -15,8 +15,8 @@ use sdl3::{
 use std::ffi::CStr;
 
 use crate::mesh::Mesh;
+pub use crate::geom::Pose;
 use mesh_renderer::MeshRenderer;
-pub use mesh_renderer::Pose;
 use retina::Retina;
 use skybox_renderer::SkyboxRenderer;
 
