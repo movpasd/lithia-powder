@@ -32,49 +32,21 @@ impl MeshRenderer {
             let vertex_shader: Shader;
             let fragment_shader: Shader;
             {
-                use shaderc::ShaderKind;
-
                 let compiler = shaderc::Compiler::new().unwrap();
 
-                let vertex_source = include_str!("shaders/mesh.vert.glsl");
-                let vertex_ir = compiler
-                    .compile_into_spirv(
-                        vertex_source,
-                        ShaderKind::Vertex,
-                        "shaders/mesh.vert.glsl",
-                        "main",
-                        None,
-                    )
-                    .unwrap();
+                let vert_spirv = shaders::vert_spirv(&compiler);
                 vertex_shader = device
                     .create_shader()
-                    .with_code(
-                        ShaderFormat::SPIRV,
-                        vertex_ir.as_binary_u8(),
-                        ShaderStage::Vertex,
-                    )
+                    .with_code(ShaderFormat::SPIRV, &vert_spirv, ShaderStage::Vertex)
                     .with_uniform_buffers(2)
                     .with_storage_buffers(1)
                     .build()
                     .unwrap();
 
-                let fragment_source = include_str!("shaders/mesh.frag.glsl");
-                let fragment_ir = compiler
-                    .compile_into_spirv(
-                        fragment_source,
-                        ShaderKind::Fragment,
-                        "shaders/mesh.frag.glsl",
-                        "main",
-                        None,
-                    )
-                    .unwrap();
+                let frag_spirv = shaders::frag_spirv(&compiler);
                 fragment_shader = device
                     .create_shader()
-                    .with_code(
-                        ShaderFormat::SPIRV,
-                        fragment_ir.as_binary_u8(),
-                        ShaderStage::Fragment,
-                    )
+                    .with_code(ShaderFormat::SPIRV, &frag_spirv, ShaderStage::Fragment)
                     .with_uniform_buffers(2)
                     .build()
                     .unwrap();
@@ -290,7 +262,6 @@ impl MeshRenderer {
     }
 }
 
-
 struct MeshBufferEntry {
     first_index: u32,
     num_indices: u32,
@@ -348,4 +319,31 @@ impl GpuMeshVertex {
 #[repr(C)]
 struct SMeshData {
     pose_transforms: [Mat4; MeshRenderer::MAX_MESHES as usize],
+}
+
+/// interface between GLSL shaders and CPU data
+mod shaders {
+    use shaderc::{Compiler, ShaderKind};
+
+    const VERT_PATH: &str = "shaders/mesh.vert.glsl";
+    const VERT_SOURCE: &str = include_str!("shaders/mesh.vert.glsl");
+    pub fn vert_spirv(compiler: &Compiler) -> Box<[u8]> {
+        Box::from(
+            compiler
+                .compile_into_spirv(VERT_SOURCE, ShaderKind::Vertex, VERT_PATH, "main", None)
+                .unwrap()
+                .as_binary_u8(),
+        )
+    }
+
+    const FRAG_PATH: &str = "shaders/mesh.frag.glsl";
+    const FRAG_SOURCE: &str = include_str!("shaders/mesh.frag.glsl");
+    pub fn frag_spirv(compiler: &Compiler) -> Box<[u8]> {
+        Box::from(
+            compiler
+                .compile_into_spirv(FRAG_SOURCE, ShaderKind::Fragment, FRAG_PATH, "main", None)
+                .unwrap()
+                .as_binary_u8(),
+        )
+    }
 }
