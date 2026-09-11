@@ -186,7 +186,7 @@ impl MeshRenderer {
             let gpu_vertexes: Vec<_> = mesh
                 .vertexes
                 .iter()
-                .map(|mesh_vertex| MainVertex::from_mesh_vertex(mesh_id as u32, mesh_vertex))
+                .map(|mesh_vertex| build_main_vertex(mesh_id as u32, mesh_vertex))
                 .collect();
 
             let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
@@ -292,6 +292,15 @@ struct MeshBufferEntry {
     num_indices: u32,
     vertex_offset: i32,
 }
+fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVertex {
+    MainVertex {
+        model_position: mesh_vertex.position.extend(1.0),
+        color: mesh_vertex.data,
+        model_normal: mesh_vertex.normal.extend(0.0),
+        mesh_id,
+        _pad: [0; _],
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
 #[repr(C)]
@@ -302,17 +311,6 @@ struct MainVertex {
     color: Vec4,
     mesh_id: u32,
     _pad: [u8; 12],
-}
-impl MainVertex {
-    fn from_mesh_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> Self {
-        Self {
-            model_position: mesh_vertex.position.extend(1.0),
-            color: mesh_vertex.data,
-            model_normal: mesh_vertex.normal.extend(0.0),
-            mesh_id,
-            _pad: [0; _],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
