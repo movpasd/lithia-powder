@@ -68,23 +68,23 @@ impl MeshRenderer {
                             .with_input_rate(VertexInputRate::Vertex)])
                         .with_vertex_attributes(&[
                             VertexAttribute::new()
+                                .with_location(shaders::VALOC_MODEL_POSITION)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_location(0)
                                 .with_offset(0)
                                 .with_format(VertexElementFormat::Float4),
                             VertexAttribute::new()
+                                .with_location(shaders::VALOC_MODEL_NORMAL)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_location(1)
                                 .with_offset(16)
                                 .with_format(VertexElementFormat::Float4),
                             VertexAttribute::new()
+                                .with_location(shaders::VALOC_COLOR)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_location(2)
                                 .with_offset(32)
                                 .with_format(VertexElementFormat::Float4),
                             VertexAttribute::new()
+                                .with_location(shaders::VALOC_MESH_ID)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_location(3)
                                 .with_offset(48)
                                 .with_format(VertexElementFormat::Uint),
                         ]),
@@ -323,6 +323,7 @@ struct SMeshData {
 
 /// interface between GLSL shaders and CPU data
 mod shaders {
+    use sdl3::gpu::{ShaderStage::Vertex, VertexElementFormat};
     use shaderc::{Compiler, ShaderKind};
 
     // -- vert --
@@ -340,6 +341,21 @@ mod shaders {
                 .as_binary_u8(),
         )
     }
+
+    // vertex attribute data
+    // note: VAFMTs refer to the preferred format. other formats may work and get
+    // implitly coerced.
+    pub const VALOC_MODEL_POSITION: u32 = 0;
+    pub const VAFMT_MODEL_POSITION: VertexElementFormat = VertexElementFormat::Float4;
+
+    pub const VALOC_MODEL_NORMAL: u32 = 1;
+    pub const VAFMT_MODEL_NORMAL: VertexElementFormat = VertexElementFormat::Float4;
+
+    pub const VALOC_COLOR: u32 = 2;
+    pub const VAFMT_COLOR: VertexElementFormat = VertexElementFormat::Float4;
+
+    pub const VALOC_MESH_ID: u32 = 3;
+    pub const VAFMT_MESH_ID: VertexElementFormat = VertexElementFormat::Uint;
 
     // -- frag --
 
