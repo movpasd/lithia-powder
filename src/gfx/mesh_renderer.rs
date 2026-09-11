@@ -13,9 +13,9 @@ use crate::mesh::{self, Mesh};
 use crate::geom::Pose;
 
 pub struct MeshRenderer {
-    mesh_pipeline: GraphicsPipeline,
-    mesh_vbuf: Buffer,
-    mesh_ibuf: Buffer,
+    pipeline: GraphicsPipeline,
+    vbuf: Buffer,
+    ibuf: Buffer,
     tbuf1: TransferBuffer,
     tbuf2: TransferBuffer,
     mesh_data_sbuf: Buffer,
@@ -27,7 +27,7 @@ impl MeshRenderer {
     const MAX_MESHES: u32 = 512;
 
     pub fn new(device: &Device, texture_format: TextureFormat) -> Self {
-        let mesh_pipeline = {
+        let pipeline = {
             // load and compile shaders
             let vertex_shader: Shader;
             let fragment_shader: Shader;
@@ -117,13 +117,13 @@ impl MeshRenderer {
                 .unwrap()
         };
 
-        let mesh_vbuf = device
+        let vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
             .with_size(Self::MAX_VERTEXES * size_of::<GpuMeshVertex>() as u32)
             .build()
             .unwrap();
-        let mesh_ibuf = device
+        let ibuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::INDEX)
             .with_size(Self::MAX_INDEXES * size_of::<u32>() as u32)
@@ -137,20 +137,20 @@ impl MeshRenderer {
             .unwrap();
         let tbuf1 = device
             .create_transfer_buffer()
-            .with_size(mesh_vbuf.len())
+            .with_size(vbuf.len())
             .build()
             .unwrap();
         let tbuf2 = device
             .create_transfer_buffer()
-            .with_size(mesh_ibuf.len())
+            .with_size(ibuf.len())
             .build()
             .unwrap();
         let mesh_buf_entries = vec![];
 
         Self {
-            mesh_pipeline,
-            mesh_vbuf,
-            mesh_ibuf,
+            pipeline,
+            vbuf,
+            ibuf,
             tbuf1,
             tbuf2,
             mesh_data_sbuf,
@@ -216,15 +216,15 @@ impl MeshRenderer {
             copy_pass.upload_to_gpu_buffer(
                 TransferBufferLocation::new().with_transfer_buffer(&self.tbuf1),
                 BufferRegion::new()
-                    .with_buffer(&self.mesh_vbuf)
-                    .with_size(self.mesh_vbuf.len()),
+                    .with_buffer(&self.vbuf)
+                    .with_size(self.vbuf.len()),
                 true,
             );
             copy_pass.upload_to_gpu_buffer(
                 TransferBufferLocation::new().with_transfer_buffer(&self.tbuf2),
                 BufferRegion::new()
-                    .with_buffer(&self.mesh_ibuf)
-                    .with_size(self.mesh_ibuf.len()),
+                    .with_buffer(&self.ibuf)
+                    .with_size(self.ibuf.len()),
                 true,
             );
             device.end_copy_pass(copy_pass);
@@ -271,10 +271,10 @@ impl MeshRenderer {
         command_buffer.push_fragment_uniform_data(0, u_eyeball);
         command_buffer.push_fragment_uniform_data(1, u_lamp);
 
-        render_pass.bind_graphics_pipeline(&self.mesh_pipeline);
-        render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.mesh_vbuf)]);
+        render_pass.bind_graphics_pipeline(&self.pipeline);
+        render_pass.bind_vertex_buffers(0, &[BufferBinding::new().with_buffer(&self.vbuf)]);
         render_pass.bind_index_buffer(
-            &BufferBinding::new().with_buffer(&self.mesh_ibuf),
+            &BufferBinding::new().with_buffer(&self.ibuf),
             IndexElementSize::_32BIT,
         );
         render_pass.bind_vertex_storage_buffers(0, std::slice::from_ref(&self.mesh_data_sbuf));
