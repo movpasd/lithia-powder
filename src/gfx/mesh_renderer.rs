@@ -177,8 +177,8 @@ impl MeshRenderer {
         meshes: &[Mesh<Vec4>],
     ) {
         // accumulate data into local byte array, keeping track of entries
-        let mut vbuf_data: Vec<u8> = vec![];
-        let mut ibuf_data: Vec<u8> = vec![];
+        let mut vbuf_data: Vec<MainVertex> = vec![];
+        let mut ibuf_data: Vec<u32> = vec![];
         let mut mesh_buf_entries = vec![];
         let mut next_first_index: u32 = 0;
         let mut next_vertex_offset: i32 = 0;
@@ -189,10 +189,8 @@ impl MeshRenderer {
                 .map(|mesh_vertex| build_main_vertex(mesh_id as u32, mesh_vertex))
                 .collect();
 
-            let vbytes = bytemuck::cast_slice::<_, u8>(&gpu_vertexes);
-            vbuf_data.extend_from_slice(vbytes);
-            let ibytes = bytemuck::cast_slice::<_, u8>(&mesh.indexes);
-            ibuf_data.extend_from_slice(ibytes);
+            vbuf_data.extend_from_slice(&gpu_vertexes);
+            ibuf_data.extend_from_slice(&mesh.indexes);
 
             let mesh_index_count = mesh.indexes.len() as u32;
             let mesh_vertex_count = mesh.vertexes.len() as i32;
@@ -298,19 +296,17 @@ fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVert
         color: mesh_vertex.data,
         model_normal: mesh_vertex.normal.extend(0.0),
         mesh_id,
-        _pad: [0; _],
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
-/// aligned vertex data for the vertex shader
+/// vertex data 
 struct MainVertex {
     model_position: Vec4,
     model_normal: Vec4,
     color: Vec4,
     mesh_id: u32,
-    _pad: [u8; 12],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -321,7 +317,7 @@ struct SMeshData {
 
 /// interface between GLSL shaders and CPU data
 mod shaders {
-    use sdl3::gpu::{ShaderStage::Vertex, VertexElementFormat};
+    use sdl3::gpu::VertexElementFormat;
     use shaderc::{Compiler, ShaderKind};
 
     // -- vert --
