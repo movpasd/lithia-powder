@@ -56,6 +56,9 @@ impl MeshRenderer {
             // all vertex attributes are stored in a single per-vertex vbuf, the main vbuf
             const MAIN_VBUF_SLOT: u32 = 0;
 
+            fn expect_eq<T: PartialEq>(x: T, y: T) -> T {
+                (x == y).then_some(x).unwrap()
+            }
             device
                 .create_graphics_pipeline()
                 .with_vertex_shader(&vertex_shader)
@@ -64,29 +67,41 @@ impl MeshRenderer {
                     VertexInputState::new()
                         .with_vertex_buffer_descriptions(&[VertexBufferDescription::new()
                             .with_slot(MAIN_VBUF_SLOT)
-                            .with_pitch(size_of::<MainVertex>() as u32)
+                            .with_pitch(size_of::<MainVbufVertex>() as u32)
                             .with_input_rate(VertexInputRate::Vertex)])
                         .with_vertex_attributes(&[
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MODEL_POSITION)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_offset(0)
-                                .with_format(VertexElementFormat::Float4),
+                                .with_offset(MainVbufVertex::OFS_MODEL_POSITION)
+                                .with_format(expect_eq(
+                                    MainVbufVertex::FMT_MODEL_POSITION,
+                                    shaders::VAFMT_MODEL_POSITION,
+                                )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MODEL_NORMAL)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_offset(16)
-                                .with_format(VertexElementFormat::Float4),
+                                .with_offset(MainVbufVertex::OFS_MODEL_NORMAL)
+                                .with_format(expect_eq(
+                                    MainVbufVertex::FMT_MODEL_NORMAL,
+                                    shaders::VAFMT_MODEL_NORMAL,
+                                )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_COLOR)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_offset(32)
-                                .with_format(VertexElementFormat::Float4),
+                                .with_offset(MainVbufVertex::OFS_COLOR)
+                                .with_format(expect_eq(
+                                    MainVbufVertex::FMT_COLOR,
+                                    shaders::VAFMT_COLOR,
+                                )),
                             VertexAttribute::new()
                                 .with_location(shaders::VALOC_MESH_ID)
                                 .with_buffer_slot(MAIN_VBUF_SLOT)
-                                .with_offset(48)
-                                .with_format(VertexElementFormat::Uint),
+                                .with_offset(MainVbufVertex::OFS_MESH_ID)
+                                .with_format(expect_eq(
+                                    MainVbufVertex::FMT_MESH_ID,
+                                    shaders::VAFMT_MESH_ID,
+                                )),
                         ]),
                 )
                 .with_primitive_type(PrimitiveType::TriangleList)
@@ -117,7 +132,7 @@ impl MeshRenderer {
         let main_vbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::VERTEX)
-            .with_size(Self::MAX_VERTEXES * size_of::<MainVertex>() as u32)
+            .with_size(Self::MAX_VERTEXES * size_of::<MainVbufVertex>() as u32)
             .build()
             .unwrap();
         let main_ibuf = device
@@ -177,7 +192,7 @@ impl MeshRenderer {
         meshes: &[Mesh<Vec4>],
     ) {
         // accumulate data into local byte array, keeping track of entries
-        let mut vbuf_data: Vec<MainVertex> = vec![];
+        let mut vbuf_data: Vec<MainVbufVertex> = vec![];
         let mut ibuf_data: Vec<u32> = vec![];
         let mut mesh_buf_entries = vec![];
         let mut next_first_index: u32 = 0;
@@ -290,8 +305,8 @@ struct MeshBufferEntry {
     num_indices: u32,
     vertex_offset: i32,
 }
-fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVertex {
-    MainVertex {
+fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVbufVertex {
+    MainVbufVertex {
         model_position: mesh_vertex.position.extend(1.0),
         color: mesh_vertex.data,
         model_normal: mesh_vertex.normal.extend(0.0),
@@ -301,12 +316,25 @@ fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVert
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
-/// vertex data 
-struct MainVertex {
+/// format of the items stored in the main vertex buffer
+struct MainVbufVertex {
     model_position: Vec4,
     model_normal: Vec4,
     color: Vec4,
     mesh_id: u32,
+}
+impl MainVbufVertex {
+    const FMT_MODEL_POSITION: VertexElementFormat = VertexElementFormat::Float4;
+    const OFS_MODEL_POSITION: u32 = 0;
+
+    const FMT_MODEL_NORMAL: VertexElementFormat = VertexElementFormat::Float4;
+    const OFS_MODEL_NORMAL: u32 = 16;
+
+    const FMT_COLOR: VertexElementFormat = VertexElementFormat::Float4;
+    const OFS_COLOR: u32 = 32;
+
+    const FMT_MESH_ID: VertexElementFormat = VertexElementFormat::Uint;
+    const OFS_MESH_ID: u32 = 48;
 }
 
 #[derive(Debug, Clone, Copy)]
