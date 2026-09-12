@@ -144,7 +144,7 @@ impl MeshRenderer {
         let mesh_data_sbuf = device
             .create_buffer()
             .with_usage(BufferUsageFlags::GRAPHICS_STORAGE_READ)
-            .with_size(size_of::<SMeshData>() as u32)
+            .with_size(size_of::<MeshDataSbuf>() as u32)
             .build()
             .unwrap();
         let tbuf1 = device
@@ -211,9 +211,9 @@ impl MeshRenderer {
                 let mesh_index_count = mesh.indexes.len() as u32;
                 let mesh_vertex_count = mesh.vertexes.len() as i32;
                 let entry = MeshEntry {
-                    first_index: next_first_index,
-                    num_indices: mesh_index_count,
-                    vertex_offset: next_vertex_offset,
+                    ibuf_offset: next_first_index,
+                    idx_count: mesh_index_count,
+                    vbuf_offset: next_vertex_offset,
                 };
                 mesh_buf_entries.push(entry);
                 next_first_index += mesh_index_count;
@@ -246,26 +246,24 @@ impl MeshRenderer {
     }
 
     fn reupload_poses(&mut self, device: &Device, command_buffer: &CommandBuffer, poses: &[Pose]) {
-        let pose_transforms = {
-            let mut pose_transforms = [Mat4::ZERO; _];
-            for (i, pose) in poses.iter().enumerate() {
-                pose_transforms[i] = pose.to_transform();
-            }
-            pose_transforms
-        };
-        // ensure that tbuf1 has enough room for at least 1 SMeshData before copying it over
-        assert!(self.tbuf1.len() >= size_of::<SMeshData>() as u32);
-        self.tbuf1.map::<SMeshData>(device, true).mem_mut()[0] = SMeshData { pose_transforms };
+        let mesh_data_sbuf = build_mesh_data_sbuf(poses);
+
+        // ensure that tbuf1 has enough room
+        assert!(self.tbuf1.len() >= size_of_val(&mesh_data_sbuf) as u32);
+
+        const TBUF_OFFSET: u32 = 0;
+        self.tbuf1.map::<MeshDataSbuf>(device, true).mem_mut()[TBUF_OFFSET as usize] =
+            mesh_data_sbuf;
 
         let pose_upload_pass = device.begin_copy_pass(command_buffer).unwrap();
         pose_upload_pass.upload_to_gpu_buffer(
             TransferBufferLocation::new()
                 .with_transfer_buffer(&self.tbuf1)
-                .with_offset(0),
+                .with_offset(TBUF_OFFSET),
             BufferRegion::new()
                 .with_buffer(&self.mesh_data_sbuf)
-                .with_offset(0)
-                .with_size(size_of::<SMeshData>() as u32),
+                .with_offset(MeshDataSbuf::OFS_POSE_TRANSFORMS)
+                .with_size(size_of::<MeshDataSbuf>() as u32),
             true,
         );
         device.end_copy_pass(pose_upload_pass);
@@ -298,21 +296,25 @@ impl MeshRenderer {
         );
 
         for &MeshEntry {
-            first_index: ibuf_offset,
-            num_indices: ibuf_count,
-            vertex_offset: vbuf_offset,
+            ibuf_offset,
+            idx_count,
+            vbuf_offset,
         } in self.mesh_entries.iter()
         {
-            render_pass.draw_indexed_primitives(ibuf_count, 1, ibuf_offset, vbuf_offset, 0);
+            render_pass.draw_indexed_primitives(idx_count, 1, ibuf_offset, vbuf_offset, 0);
         }
     }
 }
 
+// -- tracking --
+
 struct MeshEntry {
-    first_index: u32,
-    num_indices: u32,
-    vertex_offset: i32,
+    ibuf_offset: u32,
+    idx_count: u32,
+    vbuf_offset: i32,
 }
+
+// -- assembly --
 
 fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVbufVertex {
     MainVbufVertex {
@@ -322,6 +324,19 @@ fn build_main_vertex(mesh_id: u32, mesh_vertex: &mesh::Vertex<Vec4>) -> MainVbuf
         mesh_id,
     }
 }
+
+fn build_mesh_data_sbuf(poses: &[Pose]) -> MeshDataSbuf {
+    let pose_transforms = {
+        let mut pose_transforms = [Mat4::ZERO; _];
+        for (i, pose) in poses.iter().enumerate() {
+            pose_transforms[i] = pose.to_transform();
+        }
+        pose_transforms
+    };
+    MeshDataSbuf { pose_transforms }
+}
+
+// -- resources --
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
@@ -348,8 +363,12 @@ impl MainVbufVertex {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-struct SMeshData {
+struct MeshDataSbuf {
     pose_transforms: [Mat4; MeshRenderer::MAX_MESHES as usize],
+}
+impl MeshDataSbuf {
+    /// offset of the pose_transforms array once stored in the GPU-side sbuf
+    const OFS_POSE_TRANSFORMS: u32 = 0;
 }
 
 /// interface between GLSL shaders and CPU data
